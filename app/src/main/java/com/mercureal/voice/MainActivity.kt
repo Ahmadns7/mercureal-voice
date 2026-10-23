@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.text.InputType
 import android.util.TypedValue
 import android.view.Gravity
@@ -34,13 +35,15 @@ import java.util.Locale
  * Dark surface, emerald accent. Tabs: Home, Assistant (on-device chat), Apps, History, Aliases.
  */
 class MainActivity : Activity() {
-    private val bg = Color.parseColor("#0B0F0E")
-    private val card = Color.parseColor("#151C1A")
-    private val bubbleUser = Color.parseColor("#065F46")
-    private val text = Color.parseColor("#E8F5F0")
-    private val muted = Color.parseColor("#7C9A90")
-    private val emerald = Color.parseColor("#10B981")
-    private val red = Color.parseColor("#F87171")
+    // Colours come from the active theme and accent (1.6.0). Read on each access.
+    private val pal get() = Theme.palette(this)
+    private val bg get() = pal.bg
+    private val card get() = pal.card
+    private val bubbleUser get() = pal.bubbleUser
+    private val text get() = pal.text
+    private val muted get() = pal.muted
+    private val emerald get() = pal.accent
+    private val red get() = pal.red
     // Not created in a field initializer: views need a Context, and fields run before the
     // Activity is attached (v1.0.0 crashed on open because of this).
     private lateinit var body: LinearLayout
@@ -341,6 +344,81 @@ class MainActivity : Activity() {
             12f, muted
         ), lp(6))
         c.addView(notif, lp())
+
+        c.addView(label("Wake word", 13f, muted), lp(14))
+        val wake = card()
+        val wakeSwitch = Switch(this).apply {
+            text = "Wake word: say the phrase, then the command"
+            setTextColor(this@MainActivity.text)
+            isChecked = Store.wakeEnabled(this@MainActivity)
+            setOnCheckedChangeListener { _, checked ->
+                Store.setWakeEnabled(this@MainActivity, checked)
+                if (VoiceService.isRunning()) {
+                    VoiceService.stop(this@MainActivity)
+                    VoiceService.start(this@MainActivity)
+                }
+            }
+        }
+        wake.addView(wakeSwitch, lp(4))
+        val phraseField = field("wake phrase").apply { setText(Store.wakePhrase(this@MainActivity)) }
+        wake.addView(phraseField, lp(8))
+        wake.addView(button("Save phrase", primary = false) {
+            Store.setWakePhrase(this@MainActivity, phraseField.text.toString())
+            Toast.makeText(this@MainActivity, "wake phrase saved", Toast.LENGTH_SHORT).show()
+        }.apply { layoutParams = lp(6) })
+        wake.addView(label(
+            "Listens in short windows with rests, stops after 5 minutes of silence, and pauses on battery saver or under 15% battery. Matching on partial results is approximate. Battery use depends on your phone's speech service.",
+            12f, muted
+        ), lp(6))
+        // Offline partial results are what the wake word needs. Only Android 12+ can report this.
+        val offline = if (Build.VERSION.SDK_INT >= 31) SpeechRecognizer.isOnDeviceRecognitionAvailable(this) else null
+        wake.addView(label(
+            when (offline) {
+                true -> "Offline speech: available on this phone."
+                false -> "Warning: this phone's speech service does not offer offline recognition. The wake word may not work, or may need internet and use more battery."
+                null -> "Offline speech: can't be checked on Android 11 and below."
+            },
+            12f, if (offline == false) red else muted
+        ).apply { setPadding(0, dp(6), 0, 0) })
+        c.addView(wake, lp())
+
+        c.addView(label("Appearance", 13f, muted), lp(14))
+        val look = card()
+        val curTheme = Store.theme(this)
+        look.addView(label("Theme", 14f, text))
+        val themeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        listOf("dark" to "Dark", "light" to "Light").forEach { (key, name) ->
+            themeRow.addView(button(name, primary = curTheme == key) {
+                Store.setTheme(this@MainActivity, key)
+                recreate()
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        look.addView(themeRow, lp(6))
+        look.addView(label("Accent", 14f, text), lp(8))
+        val curAccent = Store.accent(this)
+        val accRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        Theme.accents.keys.forEach { key ->
+            accRow.addView(button(Theme.accentLabel(key), primary = curAccent == key) {
+                Store.setAccent(this@MainActivity, key)
+                recreate()
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        look.addView(accRow, lp(6))
+        look.addView(label("App icon (the launcher can take a few seconds to update)", 14f, text), lp(8))
+        val curIcon = Store.icon(this)
+        val iconRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        AppIcon.choices.keys.forEach { key ->
+            iconRow.addView(button(AppIcon.label(key), primary = curIcon == key) {
+                if (AppIcon.apply(this@MainActivity, key)) {
+                    Toast.makeText(this@MainActivity, "icon set to ${AppIcon.label(key)}", Toast.LENGTH_SHORT).show()
+                    showTab("home")
+                } else {
+                    Toast.makeText(this@MainActivity, "couldn't change the icon", Toast.LENGTH_SHORT).show()
+                }
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        look.addView(iconRow, lp(6))
+        c.addView(look, lp())
 
         c.addView(label("Listening", 13f, muted), lp(14))
         val sw = Switch(this).apply {

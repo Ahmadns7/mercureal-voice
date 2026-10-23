@@ -2,7 +2,7 @@
 
 Offline-first voice control for Android. Speak a command, the phone does it. Nothing is uploaded. All history, aliases and settings live on the device (SharedPreferences).
 
-Package: com.mercureal.voice · versionName 1.5.0 (versionCode 7) · minSdk 26 · targetSdk 35
+Package: com.mercureal.voice · versionName 1.6.0 (versionCode 8) · minSdk 26 · targetSdk 35
 
 ## Features
 
@@ -13,7 +13,7 @@ Package: com.mercureal.voice · versionName 1.5.0 (versionCode 7) · minSdk 26 �
 - Command history (last 100).
 - Custom aliases: map a phrase to an app or action.
 - Quick actions grid on the home screen.
-- Dark UI, emerald accent (#10B981) on #0B0F0E.
+- Dark UI with emerald accent by default. Theme (dark or light) and accent (emerald, sky, amber) are set in the Home tab appearance section (new in 1.6.0).
 - Onboarding screen covering permissions and privacy. Reopen from the Home tab.
 - Routines (new in 1.2.0): a spoken phrase runs a chain of commands in order, waiting for each step's speech before the next. Two examples ship ("good morning", "wind down"). Edit or add routines in the app.
 - Media control (new in 1.3.0): "play", "pause", "next", "previous", and "what's playing". With notification access, controls go to the active music session and "what's playing" reads the title and artist. Without it, play/pause/next/previous send the media key instead. Volume is adjusted through AudioManager. With no active session, it says so instead of failing silently.
@@ -24,7 +24,7 @@ Package: com.mercureal.voice · versionName 1.5.0 (versionCode 7) · minSdk 26 �
 - App usage stats (new in 1.5.0): "how much time on whatsapp today" or "yesterday" answers from UsageStatsManager foreground time, with fuzzy app-name matching shared with "open". "screen time" or "top apps" speaks the top five apps. The Usage tab shows the top five apps today with time bars. Needs usage access (special permission, granted in settings).
 - Reminders (new in 1.2.0): "remind me to X at 6pm", "remind me to X tomorrow at 9", or "remind me to X in 20 minutes". Stored on-device, fired by an exact alarm with a spoken announcement and notification. Reminders are re-armed after reboot.
 
-## Feature table (1.5.0)
+## Feature table (1.6.0, all 10 features complete)
 
 | Feature | Version | Needs |
 | --- | --- | --- |
@@ -36,8 +36,13 @@ Package: com.mercureal.voice · versionName 1.5.0 (versionCode 7) · minSdk 26 �
 | Emergency mode: location + maps link texted to saved contact, panic mode | 1.4.0 | SEND_SMS and ACCESS_FINE_LOCATION (runtime); location is optional, the text still goes out without it |
 | Screen reader: "read screen" paginated TTS, "stop reading" | 1.5.0 | Accessibility service enabled by the user in Accessibility settings (special access, not a runtime prompt) |
 | App usage stats: per-app "how much time" answers, top-5 today with Usage tab | 1.5.0 | PACKAGE_USAGE_STATS (special access, granted in Usage access settings, not a runtime prompt) |
+| Offline wake word: foreground listening, duty cycled, suspends on battery saver or below 15% | 1.6.0 | RECORD_AUDIO; an offline speech service with partial results (the app warns in Home if the phone does not offer offline recognition) |
+| Themes and accent: dark or light, accent emerald, sky or amber | 1.6.0 | nothing extra |
+| Alternate launcher icons: default, wave, bolt, mono (activity-alias) | 1.6.0 | nothing extra; the launcher can take a few seconds to show the change |
 
-Deferred (not in 1.5.0): wake word, themes and icon packs.
+Wake word (1.6.0) details: the phrase defaults to "mercureal" and is set in the Home tab. Matching runs on SpeechRecognizer partial results and is approximate: words are compared with a small edit tolerance, so near misses can trigger and some real speech can be missed. Listening runs in short windows with rests between them. It stops after 5 minutes with no speech heard, and it pauses on battery saver or below 15% battery. Battery use depends on the phone's speech service and OEM (HiOS and others can differ), so measure it on your own phone.
+
+Icons (1.6.0): the Home tab appearance section switches between default, wave, bolt and mono. The launcher can take a few seconds (sometimes a relaunch) to show the new icon.
 
 ## Permissions
 

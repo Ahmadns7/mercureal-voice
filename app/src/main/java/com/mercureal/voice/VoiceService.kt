@@ -22,15 +22,21 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.TypedValue
 import android.view.Gravity
-import android.view.View
 import android.view.WindowManager
 import android.widget.TextView
 
 /**
  * Foreground service: listens for voice commands, shows the floating mic overlay,
  * and runs commands through the shared dispatcher.
+ *
+ * Two modes. Continuous (default): one recognition pass after another, no partials.
+ * Wake word (opt-in, 1.6.0): short listen windows with partial results. When the wake
+ * phrase shows up, the next utterance runs as a command. Windows are separated by rests,
+ * the loop stops after a long silence, and it pauses on battery saver or under 15% battery.
  */
 class VoiceService : Service() {
+    private enum class WakeState { OFF, WINDOW, PAUSE, WAKE_HEARD, COMMAND }
+
     private val main = Handler(Looper.getMainLooper())
     private var recognizer: SpeechRecognizer? = null
     private var overlay: TextView? = null
@@ -39,6 +45,28 @@ class VoiceService : Service() {
     private var wm: WindowManager? = null
     private var batteryWarned = false
     private var batteryRegistered = false
+
+    private var wakeMode = false
+    private var wakeState = WakeState.OFF
+    private var lastSpeechAt = System.currentTimeMillis()
+    private var recognizerErrors = 0
+    private var statusText = READY_TEXT
+
+    private val windowEnd = Runnable { endWindow() }
+    private val nextWindow = Runnable { wakeTick() }
+    private val wakeFallback = Runnable {
+        if (wakeState == WakeState.WAKE_HEARD) {
+            recognizer?.cancel()
+            startCommandPass()
+        }
+    }
+    private val commandFallback = Runnable {
+        if (wakeState == WakeState.COMMAND) {
+            recognizer?.cancel()
+            afterCommand()
+        }
+    }
+
     private val batteryReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(c: Context?, intent: Intent?) {
             if (intent == null) return
@@ -83,9 +111,12 @@ class VoiceService : Service() {
         super.onCreate()
         instance = this
         continuous = Store.continuous(this)
+        wakeMode = Store.wakeEnabled(this)
+        lastSpeechAt = System.currentTimeMillis()
+        statusText = if (wakeMode) wakeOnText() else READY_TEXT
         try {
             createChannel()
-            val notif = buildNotification("Ready. Tap the mic or say a command.")
+            val notif = buildNotification(statusText)
             if (Build.VERSION.SDK_INT >= 29) {
                 startForeground(NOTIF_ID, notif, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
             } else {
@@ -108,7 +139,7 @@ class VoiceService : Service() {
         } catch (e: SecurityException) {
             android.util.Log.w("MercuReal", "overlay permission refused", e)
         }
-        startListening()
+        if (wakeMode) wakeTick() else startListening()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -117,6 +148,7 @@ class VoiceService : Service() {
                 stopSelf()
                 return START_NOT_STICKY
             }
+            ACTION_RELOAD -> reloadMode()
             ACTION_PROJECTION -> {
                 // Android 14+: MediaProjection needs a running mediaProjection-type foreground service.
                 val notif = buildNotification("Screen capture ready.")
@@ -132,10 +164,24 @@ class VoiceService : Service() {
         return START_STICKY
     }
 
+    /** Re-reads the wake word setting and restarts the loop. Called when the user changes it. */
+    private fun reloadMode() {
+        wakeMode = Store.wakeEnabled(this)
+        main.removeCallbacksAndMessages(null)
+        recognizer?.cancel()
+        listening = false
+        wakeState = WakeState.OFF
+        recognizerErrors = 0
+        lastSpeechAt = System.currentTimeMillis()
+        setStatus(if (wakeMode) wakeOnText() else READY_TEXT)
+        if (wakeMode) wakeTick() else startListening()
+    }
 
     override fun onDestroy() {
         instance = null
         listening = false
+        wakeState = WakeState.OFF
+        main.removeCallbacksAndMessages(null)
         if (batteryRegistered) {
             try { unregisterReceiver(batteryReceiver) } catch (_: Throwable) {}
             batteryRegistered = false
@@ -175,6 +221,19 @@ class VoiceService : Service() {
             .build()
     }
 
+    /** Updates the foreground notification text only when it changes. */
+    private fun setStatus(text: String) {
+        if (text == statusText) return
+        statusText = text
+        try {
+            getSystemService(NotificationManager::class.java).notify(NOTIF_ID, buildNotification(text))
+        } catch (e: Throwable) {
+            android.util.Log.w("MercuReal", "status update failed", e)
+        }
+    }
+
+    private fun wakeOnText() = "Wake word on: say \"${Store.wakePhrase(this)}\""
+
     // ---------- speech ----------
 
     private fun hasMic() = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -188,15 +247,18 @@ class VoiceService : Service() {
         return recognizer
     }
 
-    private fun recognizerIntent() = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+    private fun recognizerIntent(partial: Boolean = false) = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, partial)
         // Offline-first: prefer on-device recognition when the language pack is installed.
         putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
         putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
     }
 
-    /** Starts one recognition pass. Continuous mode re-arms after each result. */
+    /**
+     * Starts one recognition pass. Continuous mode re-arms after each result.
+     * In wake word mode a tap on the mic runs a command right away.
+     */
     fun startListening() {
         if (!hasMic()) {
             Speaker.instance(this).say("microphone permission is off")
@@ -204,6 +266,10 @@ class VoiceService : Service() {
         }
         val rec = ensureRecognizer() ?: run {
             Speaker.instance(this).say("speech recognition isn't available on this phone")
+            return
+        }
+        if (wakeMode) {
+            commandNow()
             return
         }
         if (listening) return
@@ -224,17 +290,43 @@ class VoiceService : Service() {
         override fun onRmsChanged(rmsdB: Float) {}
         override fun onBufferReceived(buffer: ByteArray?) {}
         override fun onEndOfSpeech() {}
-        override fun onPartialResults(partialResults: android.os.Bundle?) {}
+
+        override fun onPartialResults(partialResults: android.os.Bundle?) {
+            if (!wakeMode || wakeState != WakeState.WINDOW) return
+            val text = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+            if (text.isNullOrBlank()) return
+            lastSpeechAt = System.currentTimeMillis()
+            recognizerErrors = 0
+            if (Wake.match(this@VoiceService, text) != null) {
+                // Wake phrase heard. Stop the window and wait for the final text so the words after it count.
+                main.removeCallbacks(windowEnd)
+                wakeState = WakeState.WAKE_HEARD
+                setStatus("Heard wake word. Say a command.")
+                main.removeCallbacks(wakeFallback)
+                main.postDelayed(wakeFallback, 4000)
+                recognizer?.stopListening()
+            }
+        }
+
         override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
 
         override fun onResults(results: android.os.Bundle?) {
-            listening = false
             val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+            if (wakeMode) {
+                recognizerErrors = 0
+                onWakeResults(text)
+                return
+            }
+            listening = false
             if (!text.isNullOrBlank()) execute(this@VoiceService, text, "voice")
             rearmIfContinuous()
         }
 
         override fun onError(error: Int) {
+            if (wakeMode) {
+                onWakeError(error)
+                return
+            }
             listening = false
             setOverlayState(false)
             // 7 = no match, 6 = no speech: normal when continuous, so re-arm quietly.
@@ -251,6 +343,152 @@ class VoiceService : Service() {
         if (continuous) main.postDelayed({ startListening() }, 600)
     }
 
+    // ---------- wake word duty cycle ----------
+
+    /** One listen window, if the battery and silence guards allow it. Otherwise waits or stops. */
+    private fun wakeTick() {
+        if (!wakeMode) return
+        if (wakeState == WakeState.WINDOW || wakeState == WakeState.WAKE_HEARD || wakeState == WakeState.COMMAND) return
+        if (!hasMic()) {
+            wakeState = WakeState.PAUSE
+            setStatus("Wake word off: microphone permission is off")
+            return
+        }
+        val rec = ensureRecognizer() ?: run {
+            wakeState = WakeState.PAUSE
+            setStatus("Wake word can't run: this phone has no speech recognition")
+            return
+        }
+        Wake.suspendReason(this)?.let { reason ->
+            wakeState = WakeState.PAUSE
+            setStatus("Wake word paused: $reason")
+            scheduleNext(Wake.RECHECK_MS)
+            return
+        }
+        if (System.currentTimeMillis() - lastSpeechAt > Wake.SILENCE_STOP_MS) {
+            wakeState = WakeState.PAUSE
+            setStatus("Wake word paused after 5 minutes of silence. Tap the mic to resume.")
+            return
+        }
+        if (recognizerErrors >= Wake.MAX_ERRORS) {
+            wakeState = WakeState.PAUSE
+            setStatus("Wake word stopped: the speech service keeps failing. Tap the mic to retry.")
+            return
+        }
+        wakeState = WakeState.WINDOW
+        setStatus(wakeOnText())
+        setOverlayState(true)
+        main.postDelayed(windowEnd, Wake.WINDOW_MS)
+        main.post {
+            rec.cancel()
+            rec.startListening(recognizerIntent(partial = true))
+        }
+    }
+
+    private fun endWindow() {
+        if (wakeState != WakeState.WINDOW) return
+        main.removeCallbacks(windowEnd)
+        recognizer?.cancel()
+        wakeState = WakeState.PAUSE
+        setOverlayState(false)
+        scheduleNext(Wake.PAUSE_MS)
+    }
+
+    private fun scheduleNext(delayMs: Long) {
+        main.removeCallbacks(nextWindow)
+        main.postDelayed(nextWindow, delayMs)
+    }
+
+    private fun clearWakeCallbacks() {
+        main.removeCallbacks(windowEnd)
+        main.removeCallbacks(wakeFallback)
+        main.removeCallbacks(commandFallback)
+    }
+
+    /** Tap on the mic in wake mode: run one command now, and reset the silence stop. */
+    private fun commandNow() {
+        if (wakeState == WakeState.COMMAND || wakeState == WakeState.WAKE_HEARD) return
+        lastSpeechAt = System.currentTimeMillis()
+        recognizerErrors = 0
+        main.removeCallbacks(nextWindow)
+        startCommandPass()
+    }
+
+    /** Listens for one full utterance after the wake phrase (or a tap). */
+    private fun startCommandPass() {
+        val rec = recognizer ?: return
+        clearWakeCallbacks()
+        wakeState = WakeState.COMMAND
+        setStatus("Heard wake word. Say a command.")
+        setOverlayState(true)
+        main.postDelayed(commandFallback, 10_000)
+        main.post {
+            rec.cancel()
+            rec.startListening(recognizerIntent(partial = false))
+        }
+    }
+
+    private fun afterCommand() {
+        clearWakeCallbacks()
+        wakeState = WakeState.PAUSE
+        setOverlayState(false)
+        // Short rest so the spoken reply finishes before the next window opens.
+        scheduleNext(1500)
+    }
+
+    private fun onWakeResults(text: String?) {
+        clearWakeCallbacks()
+        when (wakeState) {
+            WakeState.WINDOW -> {
+                // Final text from a window that did not catch the phrase on the way.
+                if (!text.isNullOrBlank()) lastSpeechAt = System.currentTimeMillis()
+                val rest = text?.let { Wake.match(this, it) }
+                when {
+                    rest == null -> endWindow()
+                    rest.isNotBlank() -> {
+                        execute(this, rest, "wake")
+                        afterCommand()
+                    }
+                    else -> startCommandPass()
+                }
+            }
+            WakeState.WAKE_HEARD -> {
+                val rest = text?.let { Wake.match(this, it) }.orEmpty()
+                if (rest.isNotBlank()) {
+                    execute(this, rest, "wake")
+                    afterCommand()
+                } else {
+                    startCommandPass()
+                }
+            }
+            WakeState.COMMAND -> {
+                if (!text.isNullOrBlank()) execute(this, text, "voice")
+                afterCommand()
+            }
+            else -> afterCommand()
+        }
+    }
+
+    private fun onWakeError(error: Int) {
+        when (wakeState) {
+            WakeState.WAKE_HEARD -> {
+                clearWakeCallbacks()
+                startCommandPass()
+            }
+            WakeState.COMMAND -> afterCommand()
+            WakeState.WINDOW -> {
+                clearWakeCallbacks()
+                val quiet = error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                if (quiet) recognizerErrors = 0 else recognizerErrors++
+                if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) recognizer?.cancel()
+                wakeState = WakeState.PAUSE
+                setOverlayState(false)
+                scheduleNext(if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 3000 else Wake.PAUSE_MS)
+            }
+            else -> Unit
+        }
+    }
+
     // ---------- overlay ----------
 
     private fun showOverlay() {
@@ -258,13 +496,14 @@ class VoiceService : Service() {
         wm = getSystemService(WindowManager::class.java)
         val dp = resources.displayMetrics.density
         val size = (64 * dp).toInt()
+        val accent = Theme.palette(this).accent
         val btn = TextView(this).apply {
             text = "MIC"
             gravity = Gravity.CENTER
             setTextColor(Color.BLACK)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             setTypeface(typeface, android.graphics.Typeface.BOLD)
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(EMERALD) }
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(accent) }
             elevation = 8 * dp
             setOnClickListener { if (listening) stopListeningPass() else startListening() }
         }
@@ -294,10 +533,11 @@ class VoiceService : Service() {
 
     private fun setOverlayState(active: Boolean) {
         main.post {
+            val accent = Theme.palette(this).accent
             overlay?.text = if (active) "..." else "MIC"
             overlay?.background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(if (active) Color.parseColor("#34D399") else EMERALD)
+                setColor(if (active) Color.parseColor("#34D399") else accent)
             }
         }
     }
@@ -310,6 +550,8 @@ class VoiceService : Service() {
         const val EXTRA_ACTION = "action"
         const val ACTION_STOP = "stop"
         const val ACTION_PROJECTION = "projection"
+        const val ACTION_RELOAD = "reload"
+        const val READY_TEXT = "Ready. Tap the mic or say a command."
         const val EMERALD = 0xFF10B981.toInt()
 
         @Volatile var instance: VoiceService? = null
@@ -324,6 +566,12 @@ class VoiceService : Service() {
         }
 
         fun isRunning() = instance != null
+
+        /** Tells a running service to re-read the wake word setting. No-op when it is not running. */
+        fun reload(ctx: Context) {
+            if (instance == null) return
+            ctx.startService(Intent(ctx, VoiceService::class.java).putExtra(EXTRA_ACTION, ACTION_RELOAD))
+        }
 
         /**
          * Runs any command text (spoken, typed, or a quick action) and speaks + logs the result.

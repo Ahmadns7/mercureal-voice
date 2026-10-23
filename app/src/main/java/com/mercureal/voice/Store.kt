@@ -13,6 +13,11 @@ object Store {
     private const val KEY_CONTINUOUS = "continuous"
     private const val KEY_CHAT = "chat"
     private const val KEY_PENDING = "chat_pending"
+    private const val KEY_WAKE = "wake_enabled"
+    private const val KEY_WAKE_PHRASE = "wake_phrase"
+    private const val KEY_THEME = "theme"
+    private const val KEY_ACCENT = "accent"
+    private const val KEY_ICON = "icon"
     private const val MAX_HISTORY = 100
     private const val MAX_CHAT = 200
 
@@ -31,6 +36,45 @@ object Store {
 
     fun setContinuous(ctx: Context, value: Boolean) {
         prefs(ctx).edit().putBoolean(KEY_CONTINUOUS, value).apply()
+    }
+
+    // ---- wake word (1.6.0), off until the user turns it on ----
+
+    fun wakeEnabled(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_WAKE, false)
+
+    fun setWakeEnabled(ctx: Context, value: Boolean) {
+        prefs(ctx).edit().putBoolean(KEY_WAKE, value).apply()
+    }
+
+    fun wakePhrase(ctx: Context): String =
+        prefs(ctx).getString(KEY_WAKE_PHRASE, Wake.DEFAULT_PHRASE)?.takeIf { it.isNotBlank() } ?: Wake.DEFAULT_PHRASE
+
+    fun setWakePhrase(ctx: Context, phrase: String) {
+        val clean = phrase.trim().lowercase().take(40)
+        prefs(ctx).edit().putString(KEY_WAKE_PHRASE, clean.ifBlank { Wake.DEFAULT_PHRASE }).apply()
+    }
+
+    // ---- theme and icon (1.6.0) ----
+
+    /** "dark" (default) or "light". */
+    fun theme(ctx: Context): String = prefs(ctx).getString(KEY_THEME, "dark") ?: "dark"
+
+    fun setTheme(ctx: Context, value: String) {
+        prefs(ctx).edit().putString(KEY_THEME, value).apply()
+    }
+
+    /** Accent key: "emerald" (default), "sky", or "amber". Applies to buttons, tabs, bars and the mic. */
+    fun accent(ctx: Context): String = prefs(ctx).getString(KEY_ACCENT, "emerald") ?: "emerald"
+
+    fun setAccent(ctx: Context, value: String) {
+        prefs(ctx).edit().putString(KEY_ACCENT, value).apply()
+    }
+
+    /** One of "default", "wave", "bolt", "mono". Matches an activity-alias name in the manifest. */
+    fun icon(ctx: Context): String = prefs(ctx).getString(KEY_ICON, "default") ?: "default"
+
+    fun setIcon(ctx: Context, value: String) {
+        prefs(ctx).edit().putString(KEY_ICON, value).apply()
     }
 
     @Synchronized
