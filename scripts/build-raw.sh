@@ -16,7 +16,7 @@ echo "[1/6] compile resources"
 
 echo "[2/6] link manifest + resources"
 "$BT/aapt2" link -o "$OUT/base.apk" -I "$ANDROID_JAR" --manifest "$ROOT/app/src/main/AndroidManifest.xml" \
-  --min-sdk-version 26 --target-sdk-version 35 --version-code 4 --version-name 1.2.0 \
+  --min-sdk-version 26 --target-sdk-version 35 --version-code 5 --version-name 1.3.0 \
   --java "$OUT/gen" "$OUT/res.zip"
 
 echo "[3/6] compile Kotlin"
@@ -58,10 +58,10 @@ if [ ! -f "$KS" ]; then
     -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" >/dev/null 2>&1
 fi
 "$BT/apksigner" sign --ks "$KS" --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android \
-  --out "$OUT/mercureal-voice-1.2.0-debug.apk" "$OUT/aligned.apk"
-"$BT/apksigner" verify --verbose "$OUT/mercureal-voice-1.2.0-debug.apk"
+  --out "$OUT/mercureal-voice-1.3.0-debug.apk" "$OUT/aligned.apk"
+"$BT/apksigner" verify --verbose "$OUT/mercureal-voice-1.3.0-debug.apk"
 
 echo "[smoke] aapt2 badging + zip test"
-"$BT/aapt2" dump badging "$OUT/mercureal-voice-1.2.0-debug.apk" | grep -E "^package|sdkVersion|targetSdk|launchable-activity|uses-permission" 
-unzip -tq "$OUT/mercureal-voice-1.2.0-debug.apk"
-echo "built: $OUT/mercureal-voice-1.2.0-debug.apk"
+"$BT/aapt2" dump badging "$OUT/mercureal-voice-1.3.0-debug.apk" | grep -E "^package|sdkVersion|targetSdk|launchable-activity|uses-permission" 
+unzip -tq "$OUT/mercureal-voice-1.3.0-debug.apk"
+echo "built: $OUT/mercureal-voice-1.3.0-debug.apk"
