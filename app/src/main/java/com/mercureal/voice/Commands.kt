@@ -21,9 +21,20 @@ sealed class Command {
     data class RunRoutine(val name: String) : Command()
     /** "remind me to X at 6pm": parsed by [Reminders.parse] at run time. */
     data class Remind(val raw: String) : Command()
+    /** Media transport: op = "play", "pause", "next", "previous", or "now" (what's playing). */
+    data class Media(val op: String) : Command()
 }
 
 object CommandParser {
+    private val mediaOps = mapOf(
+        "play" to "play", "resume" to "play", "play music" to "play", "resume music" to "play",
+        "pause" to "pause", "pause music" to "pause",
+        "next" to "next", "next song" to "next", "next track" to "next", "skip" to "next", "skip song" to "next",
+        "previous" to "previous", "previous song" to "previous", "previous track" to "previous",
+        "what's playing" to "now", "whats playing" to "now", "what is playing" to "now",
+        "what's playing now" to "now", "what song is this" to "now", "what song is playing" to "now"
+    )
+
     private val numberWords = mapOf(
         "a" to 1, "an" to 1, "one" to 1, "two" to 2, "three" to 3, "four" to 4, "five" to 5,
         "six" to 6, "seven" to 7, "eight" to 8, "nine" to 9, "ten" to 10, "fifteen" to 15,
@@ -91,6 +102,8 @@ object CommandParser {
             return Command.Time
         }
         if (text.contains("battery")) return Command.Battery
+
+        mediaOps[text]?.let { return Command.Media(it) }
 
         if (text.contains("volume") || text.contains("louder") || text.contains("quieter") ||
             text == "mute" || text == "unmute"

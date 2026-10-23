@@ -41,6 +41,7 @@ object Actions {
         is Command.Unknown -> Result(false, "sorry, i didn't catch a command for that")
         is Command.RunRoutine -> Result(true, "running ${cmd.name}")
         is Command.Remind -> remind(ctx, cmd.raw)
+        is Command.Media -> MediaControl.run(ctx, cmd.op)
     }
 
     fun remind(ctx: Context, raw: String): Result {
