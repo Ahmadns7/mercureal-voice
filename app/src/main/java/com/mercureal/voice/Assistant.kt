@@ -19,6 +19,8 @@ object Assistant {
         "battery, what time is it\n" +
         "volume up, volume down, mute, volume 40\n" +
         "wifi settings, bluetooth settings\n" +
+        "play, pause, next, previous (work without access; sends the media key)\n" +
+        "what's playing (needs notification access)\n" +
         "your aliases work here too."
 
     private val yes = setOf("yes", "y", "yep", "yeah", "yup", "do it", "confirm", "go ahead", "sure", "ok", "okay")

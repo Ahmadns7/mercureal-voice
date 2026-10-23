@@ -250,6 +250,34 @@ class MainActivity : Activity() {
         }.apply { layoutParams = lp(6) })
         c.addView(perms, lp())
 
+        c.addView(label("Notifications", 13f, muted), lp(14))
+        val notif = card()
+        val granted = NotifyAccess.granted(this)
+        notif.addView(label(
+            "Notification access: " + if (granted) "on" else "off",
+            14f, if (granted) emerald else muted
+        ))
+        notif.addView(button("Open notification access", primary = false) {
+            if (!NotifyAccess.openSettings(this)) {
+                android.widget.Toast.makeText(this, "can't open settings here", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }.apply { layoutParams = lp(8) })
+        val master = Switch(this).apply {
+            text = "Read notifications aloud"
+            setTextColor(this@MainActivity.text)
+            isChecked = NotifyPrefs.enabled(this@MainActivity)
+            setOnCheckedChangeListener { _, checked -> NotifyPrefs.setEnabled(this@MainActivity, checked) }
+        }
+        notif.addView(master, lp(8))
+        notif.addView(button("Muted apps (${NotifyPrefs.muted(this).size})", primary = false) {
+            showMuteList()
+        }.apply { layoutParams = lp(6) })
+        notif.addView(label(
+            "Skipped during do not disturb, on silent or vibrate, and for muted apps. Off until you turn it on.",
+            12f, muted
+        ), lp(6))
+        c.addView(notif, lp())
+
         c.addView(label("Listening", 13f, muted), lp(14))
         val sw = Switch(this).apply {
             text = "Continuous listening"
@@ -262,6 +290,22 @@ class MainActivity : Activity() {
             "Tip: add the Flashlight and Screenshot tiles from your quick settings edit panel.",
             12f, muted
         ), lp(10))
+    }
+
+    private fun showMuteList() {
+        val apps = AppIndex.all(this)
+        val muted = NotifyPrefs.muted(this)
+        val labels = apps.map { it.label }.toTypedArray()
+        val checked = BooleanArray(apps.size) { apps[it].pkg in muted }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Mute notifications from")
+            .setMultiChoiceItems(labels, checked) { _, which, isChecked -> checked[which] = isChecked }
+            .setPositiveButton("Save") { _, _ ->
+                apps.forEachIndexed { i, app -> NotifyPrefs.setMuted(this, app.pkg, checked[i]) }
+                showTab("home")
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun permRow(name: String, perm: String): TextView {
