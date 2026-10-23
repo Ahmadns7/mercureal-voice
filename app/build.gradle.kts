@@ -11,8 +11,8 @@ android {
         applicationId = "com.mercureal.voice"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "1.7.1"
+        versionCode = 11
+        versionName = "1.8.0"
     }
 
     buildTypes {

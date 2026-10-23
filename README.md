@@ -2,7 +2,7 @@
 
 Offline-first voice control for Android. Speak a command, the phone does it. Nothing is uploaded. All history, aliases and settings live on the device (SharedPreferences).
 
-Package: com.mercureal.voice · versionName 1.7.1 (versionCode 10) · minSdk 26 · targetSdk 35
+Package: com.mercureal.voice · versionName 1.8.0 (versionCode 11) · minSdk 26 · targetSdk 35
 
 ## Features
 
@@ -24,7 +24,7 @@ Package: com.mercureal.voice · versionName 1.7.1 (versionCode 10) · minSdk 26 
 - App usage stats (new in 1.5.0): "how much time on whatsapp today" or "yesterday" answers from UsageStatsManager foreground time, with fuzzy app-name matching shared with "open". "screen time" or "top apps" speaks the top five apps. The Usage tab shows the top five apps today with time bars. Needs usage access (special permission, granted in settings).
 - Reminders (new in 1.2.0): "remind me to X at 6pm", "remind me to X tomorrow at 9", or "remind me to X in 20 minutes". Stored on-device, fired by an exact alarm with a spoken announcement and notification. Reminders are re-armed after reboot.
 
-## Feature table (1.6.0, all 10 features complete)
+## Feature table (1.8.0)
 
 | Feature | Version | Needs |
 | --- | --- | --- |
@@ -41,6 +41,8 @@ Package: com.mercureal.voice · versionName 1.7.1 (versionCode 10) · minSdk 26 
 | Wake modes: light (default) and full, duty-cycled | 1.7.0 | nothing extra |
 | Themes and accent: dark or light, accent emerald, sky or amber | 1.6.0 | nothing extra |
 | Alternate launcher icons: default, wave, bolt, mono (activity-alias) | 1.6.0 | nothing extra; the launcher can take a few seconds to show the change |
+| Home-screen widgets: mic (tap to listen), routine shortcut (long-press to pick a saved routine, tap to run), status (battery and next reminder). All 250dp wide, dark glass | 1.8.0 | add from the launcher widget picker; the status widget updates on battery changes and when you open it |
+| Car mode: full-screen high-contrast screen with four large buttons (listen, notifs, next, home), announces incoming notifications, navigate home, call <contact> | 1.8.0 | RECORD_AUDIO and CALL_PHONE; set a home address for navigate home; notification access for announcements |
 
 Wake word (1.6.0) details: the phrase defaults to "mercureal" and is set in the Home tab. Matching runs on SpeechRecognizer partial results and is approximate: words are compared with a small edit tolerance, so near misses can trigger and some real speech can be missed. Listening runs in short windows with rests between them. It stops after 5 minutes with no speech heard, and it pauses on battery saver or below 15% battery. Battery use depends on the phone's speech service and OEM (HiOS and others can differ), so measure it on your own phone.
 
@@ -94,7 +96,7 @@ Raw toolchain (no Gradle, used for release builds). Needs JDK 17+, Android SDK w
     export KOTLINC_HOME=/path/to/kotlinc
     bash scripts/build-raw.sh
 
-Output: dist/raw/mercureal-voice-1.7.1-debug.apk (includes the arm64 native library; the llama.cpp bridge is built separately, see native/) (signed with the debug key, v2 and v3 schemes).
+Output: dist/raw/mercureal-voice-1.8.0-debug.apk (includes the arm64 native library; the llama.cpp bridge is built separately, see native/) (signed with the debug key, v2 and v3 schemes).
 
 ## Caveats
 
@@ -108,3 +110,5 @@ Output: dist/raw/mercureal-voice-1.7.1-debug.apk (includes the arm64 native libr
 ## License
 
 MIT. See LICENSE.
+
+Widgets and car mode (1.8.0): the mic widget opens the app and starts listening. The routine widget keeps one routine per widget (long-press to configure, then tap to run it). The status widget shows battery and the next upcoming reminder. Car mode is entered by saying "car mode" or from its long-press launcher shortcut, and exited by saying "exit car mode" or with the exit button. While it is on, incoming notifications are announced aloud and kept in a short queue (up to 20). "navigate home" opens directions to the saved home address in Google Maps. Car mode uses large touch targets and loud text-to-speech, and keeps the screen on. Caveats: car mode has not been tested while driving, and it does not replace hands-free rules where you live.

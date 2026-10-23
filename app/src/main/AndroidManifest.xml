@@ -105,6 +105,68 @@
             </intent-filter>
         </activity-alias>
 
+        <!-- Home-screen widgets (1.8.0): mic, routine shortcut, status. Min width 250dp. -->
+        <receiver
+            android:name=".MicWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_mic_info" />
+        </receiver>
+
+        <receiver
+            android:name=".RoutineWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.appwidget.action.APPWIDGET_OPTIONS_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_routine_info" />
+        </receiver>
+
+        <receiver
+            android:name=".StatusWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.BATTERY_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_status_info" />
+        </receiver>
+
+        <receiver
+            android:name=".RoutineRunReceiver"
+            android:exported="false" />
+
+        <activity
+            android:name=".WidgetConfigActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.DeviceDefault.Dialog"
+            android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
+        <!-- Car mode quick action (1.8.0): long-press the app icon for "Car mode". -->
+        <meta-data
+            android:name="android.app.shortcuts"
+            android:resource="@xml/shortcuts" />
+
+        <!-- Car mode (1.8.0): full-screen, high-contrast, voice-first. -->
+        <activity
+            android:name=".CarModeActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:excludeFromRecents="true" />
+
         <receiver
             android:name=".SmsSentReceiver"
             android:exported="false" />

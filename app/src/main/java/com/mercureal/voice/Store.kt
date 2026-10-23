@@ -58,6 +58,10 @@ object Store {
     /** "rules" (default) or "smart" (on-device model, falls back to rules when unavailable). */
     fun assistantMode(ctx: Context): String = prefs(ctx).getString(KEY_ASSIST_MODE, "rules") ?: "rules"
 
+    private const val KEY_HOME = "home_address"
+    fun homeAddress(ctx: Context): String = prefs(ctx).getString(KEY_HOME, "") ?: ""
+    fun setHomeAddress(ctx: Context, address: String) = prefs(ctx).edit().putString(KEY_HOME, address.trim()).apply()
+
     fun setAssistantMode(ctx: Context, mode: String) {
         prefs(ctx).edit().putString(KEY_ASSIST_MODE, if (mode == "smart") "smart" else "rules").apply()
     }

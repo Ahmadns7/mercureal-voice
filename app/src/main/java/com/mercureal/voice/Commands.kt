@@ -31,6 +31,12 @@ sealed class Command {
     object StopReading : Command()
     /** Screen time. app = null means all apps (top 5). yesterday = false means today. */
     data class Usage(val app: String?, val yesterday: Boolean) : Command()
+    /** Opens the car mode screen. */
+    object CarModeOn : Command()
+    /** Leaves car mode. */
+    object CarModeOff : Command()
+    /** Opens turn-by-turn navigation to the saved home address. */
+    object NavigateHome : Command()
 }
 
 object CommandParser {
@@ -61,6 +67,9 @@ object CommandParser {
         }
 
         if (text == "emergency" || text == "help me" || text == "emergency mode") return Command.Emergency
+        if (text == "car mode" || text == "start car mode" || text == "enter car mode") return Command.CarModeOn
+        if (text == "exit car mode" || text == "leave car mode" || text == "stop car mode") return Command.CarModeOff
+        if (text == "navigate home" || text == "go home" || text == "take me home") return Command.NavigateHome
 
         if (text.startsWith("remind me") || text.startsWith("reminder to")) return Command.Remind(raw)
 

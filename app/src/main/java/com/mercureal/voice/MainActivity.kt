@@ -65,9 +65,29 @@ class MainActivity : Activity() {
             window.statusBarColor = bg
             window.navigationBarColor = bg
             if (!Store.isOnboarded(this)) showTour() else showTab("home")
+        handleIntent(intent)
         } catch (e: Throwable) {
             CrashReport.report(this, "screen start", e)
             showFallback(e)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    /** Widget taps: the mic widget opens the app and starts listening. */
+    private fun handleIntent(i: Intent?) {
+        if (i == null) return
+        if (i.getBooleanExtra(EXTRA_LISTEN, false)) {
+            i.removeExtra(EXTRA_LISTEN)
+            if (Store.isOnboarded(this)) startListeningFlow()
+        }
+        i.getStringExtra(EXTRA_ROUTINE)?.let { name ->
+            i.removeExtra(EXTRA_ROUTINE)
+            if (Store.isOnboarded(this)) runCommand(name)
         }
     }
 
@@ -228,6 +248,7 @@ class MainActivity : Activity() {
             "Bluetooth" to "open bluetooth",
             "Volume up" to "volume up",
             "Volume down" to "volume down",
+            "Car mode" to "car mode",
         )
         actions.forEach { (name, cmd) ->
             grid.addView(button(name, primary = false) { runCommand(cmd) }.apply {

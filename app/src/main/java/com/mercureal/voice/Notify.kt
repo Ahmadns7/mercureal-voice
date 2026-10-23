@@ -120,6 +120,7 @@ class NotifyListenerService : NotificationListenerService() {
         }
         val preview = if (body.length > 160) body.take(160) + "..." else body
         val speech = listOf(appLabel, title, preview).filter { it.isNotEmpty() }.joinToString(". ")
+        NotifyQueue.add(speech)
         Speaker.instance(ctx).say(speech)
     }
 }

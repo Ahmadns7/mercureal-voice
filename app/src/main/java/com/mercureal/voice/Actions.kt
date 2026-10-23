@@ -42,6 +42,12 @@ object Actions {
         is Command.RunRoutine -> Result(true, "running ${cmd.name}")
         is Command.Remind -> remind(ctx, cmd.raw)
         is Command.Media -> MediaControl.run(ctx, cmd.op)
+        is Command.CarModeOn -> { CarModeActivity.enter(ctx); Result(true, "car mode on") }
+        is Command.CarModeOff -> {
+            if (CarModeActivity.active) CarModeActivity.exitNow()
+            Result(true, "car mode off")
+        }
+        is Command.NavigateHome -> navigateHome(ctx)
         is Command.Emergency -> Result(true, "emergency")
         is Command.ReadScreen -> ScreenReader.start(ctx)
         is Command.StopReading -> ScreenReader.stop(ctx)
@@ -256,6 +262,25 @@ object Actions {
             Result(true, word)
         } catch (e: SecurityException) {
             Result(false, "this phone blocked the volume change")
+        }
+    }
+
+    /** Opens turn-by-turn navigation to the saved home address. Google Maps first, geo fallback. */
+    fun navigateHome(ctx: Context): Result {
+        val home = Store.homeAddress(ctx)
+        if (home.isBlank()) return Result(false, "no home address saved. set one in the app first")
+        val nav = Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=" + Uri.encode(home) + "&mode=d"))
+            .setPackage("com.google.android.apps.maps").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return try {
+            ctx.startActivity(nav); Result(true, "navigating home")
+        } catch (e: Exception) {
+            try {
+                ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=" + Uri.encode(home)))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                Result(true, "navigating home")
+            } catch (e2: Exception) {
+                Result(false, "no maps app found to navigate home")
+            }
         }
     }
 }
