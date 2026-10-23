@@ -2,7 +2,7 @@
 
 Offline-first voice control for Android. Speak a command, the phone does it. Nothing is uploaded. All history, aliases and settings live on the device (SharedPreferences).
 
-Package: com.mercureal.voice · versionName 1.7.0 (versionCode 9) · minSdk 26 · targetSdk 35
+Package: com.mercureal.voice · versionName 1.7.1 (versionCode 10) · minSdk 26 · targetSdk 35
 
 ## Features
 
@@ -94,7 +94,7 @@ Raw toolchain (no Gradle, used for release builds). Needs JDK 17+, Android SDK w
     export KOTLINC_HOME=/path/to/kotlinc
     bash scripts/build-raw.sh
 
-Output: dist/raw/mercureal-voice-1.7.0-debug.apk (includes the arm64 native library; the llama.cpp bridge is built separately, see native/) (signed with the debug key, v2 and v3 schemes).
+Output: dist/raw/mercureal-voice-1.7.1-debug.apk (includes the arm64 native library; the llama.cpp bridge is built separately, see native/) (signed with the debug key, v2 and v3 schemes).
 
 ## Caveats
 
