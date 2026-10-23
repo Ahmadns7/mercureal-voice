@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="com.mercureal.voice">
 
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -18,6 +19,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- Special access: granted by the user in Usage access settings, not a runtime prompt. Used for screen time. -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
 
     <!-- Android 11+ package visibility: lets the app list and open every launchable app. -->
     <queries>
@@ -123,5 +126,19 @@
             android:name=".VoiceService"
             android:exported="false"
             android:foregroundServiceType="microphone|mediaProjection" />
+
+        <!-- Screen reader: reads the active window aloud on "read screen". Enabled by the user in Accessibility settings. -->
+        <service
+            android:name=".ScreenReaderService"
+            android:exported="true"
+            android:label="@string/screen_reader_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/screen_reader_config" />
+        </service>
     </application>
 </manifest>

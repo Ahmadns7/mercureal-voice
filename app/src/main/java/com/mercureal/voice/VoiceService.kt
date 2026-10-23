@@ -353,6 +353,13 @@ class VoiceService : Service() {
                 runRoutine(app, cmd.name, raw, speaker)
                 return
             }
+            if (cmd is Command.ReadScreen || cmd is Command.StopReading) {
+                // Paginated reading: the result is spoken per page by ScreenReader itself.
+                val r = Actions.run(app, cmd)
+                Store.addHistory(app, raw, r.speech, r.ok)
+                if (!r.ok || cmd is Command.StopReading) speaker.say(r.speech)
+                return
+            }
             val result = Actions.run(app, cmd)
             Store.addHistory(app, raw, result.speech, result.ok)
             speaker.say(result.speech)

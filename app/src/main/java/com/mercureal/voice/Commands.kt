@@ -25,6 +25,12 @@ sealed class Command {
     data class Media(val op: String) : Command()
     /** Emergency mode: location + maps link texted to the saved emergency contact. */
     object Emergency : Command()
+    /** Reads the active window aloud, one page at a time. Needs the accessibility service on. */
+    object ReadScreen : Command()
+    /** Interrupts a screen read. */
+    object StopReading : Command()
+    /** Screen time. app = null means all apps (top 5). yesterday = false means today. */
+    data class Usage(val app: String?, val yesterday: Boolean) : Command()
 }
 
 object CommandParser {
@@ -67,6 +73,20 @@ object CommandParser {
         if (Regex("\\b(screen ?shot|screen capture|capture (?:the )?screen)\\b").containsMatchIn(text)) {
             return Command.Screenshot
         }
+
+        if (text == "stop reading" || text == "stop reading screen") return Command.StopReading
+        if (Regex("^(?:read|read out|read aloud) (?:the |this |my )?screen$").matches(text)) return Command.ReadScreen
+
+        if (Regex("^(?:screen time|usage|top apps|app usage)(?: (today|yesterday))?$").matches(text)) {
+            return Command.Usage(null, text.endsWith("yesterday"))
+        }
+        Regex("^how (?:much|long) (?:time )?(?:have i |did i )?(?:spent |been |spend )?(?:on |in |using )?(.+?)(?: (today|yesterday))?$")
+            .matchEntire(text)?.let {
+                val app = it.groupValues[1].trim()
+                val yest = it.groupValues[2] == "yesterday"
+                if (app.isNotEmpty() && app != "today" && app != "yesterday") return Command.Usage(app, yest)
+                if (app == "today" || app == "yesterday") return Command.Usage(null, app == "yesterday")
+            }
 
         Regex("^(call|ring|phone) (.+)$").matchEntire(text)?.let {
             return Command.Call(it.groupValues[2])

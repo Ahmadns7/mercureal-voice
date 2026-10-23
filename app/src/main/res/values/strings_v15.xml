@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="screen_reader_label">MercuReal screen reader</string>
+    <string name="screen_reader_description">Reads the text on the active screen aloud when you say read screen. Says nothing unless you ask.</string>
+</resources>

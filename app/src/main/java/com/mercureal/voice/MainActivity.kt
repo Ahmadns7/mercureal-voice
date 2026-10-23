@@ -139,7 +139,7 @@ class MainActivity : Activity() {
     private fun navBar(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER
-        listOf("home" to "Home", "chat" to "Assistant", "apps" to "Apps", "history" to "History", "aliases" to "Aliases")
+        listOf("home" to "Home", "chat" to "Assistant", "apps" to "Apps", "usage" to "Usage", "history" to "History", "aliases" to "Aliases")
             .forEach { (key, name) ->
                 addView(TextView(this@MainActivity).apply {
                     setText(name)
@@ -165,6 +165,7 @@ class MainActivity : Activity() {
         when (which) {
             "chat" -> chatView(b)
             "apps" -> appsView(b)
+            "usage" -> usageView(b)
             else -> {
                 val scroll = ScrollView(this)
                 val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -252,6 +253,24 @@ class MainActivity : Activity() {
         perms.addView(button("Grant screenshot access", primary = false) {
             ProjectionRequestActivity.launch(this)
         }.apply { layoutParams = lp(8) })
+        perms.addView(label(
+            "Screen reader (read screen aloud): " + if (ScreenReader.enabled()) "on" else "off",
+            14f, if (ScreenReader.enabled()) emerald else muted
+        ).apply { setPadding(0, dp(4), 0, dp(4)) })
+        perms.addView(button("Turn on screen reader", primary = false) {
+            if (!ScreenReader.openSettings(this)) {
+                Toast.makeText(this, "couldn't open accessibility settings", Toast.LENGTH_SHORT).show()
+            }
+        }.apply { layoutParams = lp(4) })
+        perms.addView(label(
+            "Screen time (usage access): " + if (UsageStatsReader.granted(this)) "on" else "off",
+            14f, if (UsageStatsReader.granted(this)) emerald else muted
+        ).apply { setPadding(0, dp(4), 0, dp(4)) })
+        perms.addView(button("Turn on usage access", primary = false) {
+            if (!UsageStatsReader.openSettings(this)) {
+                Toast.makeText(this, "couldn't open usage access settings", Toast.LENGTH_SHORT).show()
+            }
+        }.apply { layoutParams = lp(4) })
         perms.addView(button("Show tour and privacy", primary = false) {
             tourPage = 0
             showTour()
@@ -478,6 +497,47 @@ class MainActivity : Activity() {
         } catch (e: Exception) {
             Toast.makeText(this, "speech recognition isn't available on this phone", Toast.LENGTH_LONG).show()
         }
+    }
+
+    // ---------- Usage (top 5 today, with time bars) ----------
+    private fun usageView(b: LinearLayout) {
+        val scroll = ScrollView(this)
+        val c = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        scroll.addView(c)
+        b.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        c.addView(label("Screen time today", 16f, text, true), lp(4))
+        if (!UsageStatsReader.granted(this)) {
+            val card = card()
+            card.addView(label("Usage access is off. Android needs you to allow it once in settings, then this list fills in.", 14f, text))
+            card.addView(button("Open usage access settings") {
+                if (!UsageStatsReader.openSettings(this)) {
+                    Toast.makeText(this, "couldn't open usage access settings", Toast.LENGTH_SHORT).show()
+                }
+            }.apply { layoutParams = lp(8) })
+            c.addView(card, lp(6))
+            return
+        }
+        val totals = UsageStatsReader.totals(this, yesterday = false)
+        if (totals.isEmpty()) {
+            c.addView(label("No screen time recorded yet today.", 14f, muted), lp(6))
+            return
+        }
+        val labels = AppIndex.all(this).associateBy { it.pkg }
+        val top = totals.entries.sortedByDescending { it.value }.take(5)
+        val max = top.first().value.coerceAtLeast(1L)
+        top.forEach { (pkg, ms) ->
+            val card = card()
+            card.addView(label(labels[pkg]?.label ?: pkg, 15f, text, true))
+            card.addView(label(UsageStatsReader.formatDuration(ms), 13f, muted))
+            val bar = View(this).apply { setBackgroundColor(emerald) }
+            val frac = (ms.toDouble() / max).coerceIn(0.02, 1.0)
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            row.addView(bar, LinearLayout.LayoutParams(0, dp(8), frac.toFloat()))
+            row.addView(View(this), LinearLayout.LayoutParams(0, dp(8), (1.0 - frac).toFloat()))
+            card.addView(row, lp(4))
+            c.addView(card, lp(6))
+        }
+        c.addView(label("Say \"how much time on whatsapp today\" or \"yesterday\" for one app.", 12f, muted), lp(8))
     }
 
     // ---------- Apps (browse + search, alphabetical) ----------

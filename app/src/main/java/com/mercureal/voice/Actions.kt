@@ -43,6 +43,37 @@ object Actions {
         is Command.Remind -> remind(ctx, cmd.raw)
         is Command.Media -> MediaControl.run(ctx, cmd.op)
         is Command.Emergency -> Result(true, "emergency")
+        is Command.ReadScreen -> ScreenReader.start(ctx)
+        is Command.StopReading -> ScreenReader.stop(ctx)
+        is Command.Usage -> usage(ctx, cmd)
+    }
+
+    /** Screen time answers. Named app: fuzzy match via AppIndex.rank, same as "open". */
+    fun usage(ctx: Context, cmd: Command.Usage): Result {
+        if (!UsageStatsReader.granted(ctx)) {
+            return Result(false, "i need usage access to show screen time. turn on mercureal in usage access settings")
+        }
+        val day = if (cmd.yesterday) "yesterday" else "today"
+        val totals = UsageStatsReader.totals(ctx, cmd.yesterday)
+        if (totals.isEmpty()) {
+            return Result(false, "no screen time recorded $day. usage access may be off or just granted")
+        }
+        val labels = AppIndex.all(ctx).associateBy { it.pkg }
+        val named = cmd.app ?: return Result(true, topSpeech(totals, labels, day))
+        val ranked = AppIndex.rank(labels.values.toList(), named)
+        val best = ranked.firstOrNull()
+        if (best == null || best.second < 70) return Result(false, "no app called $named")
+        val ms = totals[best.first.pkg] ?: 0L
+        val name = best.first.label
+        return Result(true, if (ms == 0L) "you haven't used $name $day" else "$name: ${UsageStatsReader.formatDuration(ms)} $day")
+    }
+
+    private fun topSpeech(totals: Map<String, Long>, labels: Map<String, AppEntry>, day: String): String {
+        val top = totals.entries.sortedByDescending { it.value }.take(5)
+        val parts = top.map { (pkg, ms) ->
+            "${labels[pkg]?.label ?: pkg} ${UsageStatsReader.formatDuration(ms)}"
+        }
+        return "top apps $day: " + parts.joinToString(", ")
     }
 
     fun remind(ctx: Context, raw: String): Result {

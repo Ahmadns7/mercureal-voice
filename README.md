@@ -2,7 +2,7 @@
 
 Offline-first voice control for Android. Speak a command, the phone does it. Nothing is uploaded. All history, aliases and settings live on the device (SharedPreferences).
 
-Package: com.mercureal.voice · versionName 1.4.0 (versionCode 6) · minSdk 26 · targetSdk 35
+Package: com.mercureal.voice · versionName 1.5.0 (versionCode 7) · minSdk 26 · targetSdk 35
 
 ## Features
 
@@ -20,9 +20,11 @@ Package: com.mercureal.voice · versionName 1.4.0 (versionCode 6) · minSdk 26 �
 - Notification reading (new in 1.3.0): incoming notifications are read aloud as "app. title. preview". Off by default. Master toggle and a per-app mute list live on the Home tab. Skipped during do not disturb, on silent or vibrate, for ongoing, transport and progress notifications, for group summaries, and for repeats within 10 seconds. Speech is on-device TTS. Nothing is sent anywhere.
 - SMS sending (new in 1.4.0): "text <contact> <message>" finds the contact, reads back the recipient and message, and waits for "yes" (or "no") within 60 seconds before sending through SmsManager. The carrier result is announced by voice. If SEND_SMS is denied, it opens the default messaging app composer with the text filled in instead.
 - Emergency mode (new in 1.4.0): save an emergency contact and an optional message on the Home tab. Saying "emergency" or "help me" takes one location fix (last fresh fix, else a single fix with a 15 second timeout), builds a maps.google.com link, and texts it to the contact. It asks for "yes" first unless Panic mode is on, in which case it sends right away. Location needs ACCESS_FINE_LOCATION. Without it, the text goes out saying location is unavailable.
+- Screen reader (new in 1.5.0): say "read screen" to speak the text of the active window. The accessibility service walks the window tree, keeps visible text and content descriptions, and reads it in pages of about 1200 characters, starting the next page when the previous one finishes speaking. Say "stop reading" to interrupt. Off until you enable it in Accessibility settings (home tab row opens them). It reads only on request and does not act on the screen or log what it reads.
+- App usage stats (new in 1.5.0): "how much time on whatsapp today" or "yesterday" answers from UsageStatsManager foreground time, with fuzzy app-name matching shared with "open". "screen time" or "top apps" speaks the top five apps. The Usage tab shows the top five apps today with time bars. Needs usage access (special permission, granted in settings).
 - Reminders (new in 1.2.0): "remind me to X at 6pm", "remind me to X tomorrow at 9", or "remind me to X in 20 minutes". Stored on-device, fired by an exact alarm with a spoken announcement and notification. Reminders are re-armed after reboot.
 
-## Feature table (1.4.0)
+## Feature table (1.5.0)
 
 | Feature | Version | Needs |
 | --- | --- | --- |
@@ -32,8 +34,10 @@ Package: com.mercureal.voice · versionName 1.4.0 (versionCode 6) · minSdk 26 �
 | Notification reading (master toggle, per-app mute, DND and silent aware) | 1.3.0 | notification access |
 | SMS sending with spoken read-back and yes/no confirmation | 1.4.0 | SEND_SMS (runtime); falls back to the messaging app composer if denied |
 | Emergency mode: location + maps link texted to saved contact, panic mode | 1.4.0 | SEND_SMS and ACCESS_FINE_LOCATION (runtime); location is optional, the text still goes out without it |
+| Screen reader: "read screen" paginated TTS, "stop reading" | 1.5.0 | Accessibility service enabled by the user in Accessibility settings (special access, not a runtime prompt) |
+| App usage stats: per-app "how much time" answers, top-5 today with Usage tab | 1.5.0 | PACKAGE_USAGE_STATS (special access, granted in Usage access settings, not a runtime prompt) |
 
-Deferred (not in 1.4.0): wake word, screen reader, usage stats, themes and icon packs.
+Deferred (not in 1.5.0): wake word, themes and icon packs.
 
 ## Permissions
 
@@ -50,6 +54,8 @@ Deferred (not in 1.4.0): wake word, screen reader, usage stats, themes and icon 
 - RECEIVE_BOOT_COMPLETED: re-arm saved reminders after a reboot (no runtime prompt).
 - SCHEDULE_EXACT_ALARM: fire reminders on time. On Android 12+ the user can deny this in Settings. Reminders then fire late, not on time. The app still schedules them, but the timing is inexact.
 - BIND_NOTIFICATION_LISTENER_SERVICE: declared on NotifyListenerService. Not a runtime permission. The user grants it in Settings under notification access. It is needed for both notification reading and media session control. Without it, notifications are not read and "what's playing" is unavailable.
+- PACKAGE_USAGE_STATS: screen time from UsageStatsManager (special access, added in 1.5.0). The user grants it in Usage access settings; the app opens that screen from the home tab. Without it, usage answers say access is off and the Usage tab shows an enable button.
+- Accessibility service (ScreenReaderService, added in 1.5.0): BIND_ACCESSIBILITY_SERVICE, held by the system. Enabled by the user in Accessibility settings. canRetrieveWindowContent is true so the app can read visible text. It does not perform gestures or inject input.
 - ACCESS_NETWORK_STATE: lets the speech engine check connectivity. Not used to send data.
 
 Android has no MEDIA_PROJECTION runtime permission. Screen capture is approved through the system consent dialog, which the app shows once per session. The grant expires when the session ends.
@@ -74,13 +80,15 @@ Raw toolchain (no Gradle, used for release builds). Needs JDK 17+, Android SDK w
     export KOTLINC_HOME=/path/to/kotlinc
     bash scripts/build-raw.sh
 
-Output: dist/raw/mercureal-voice-1.4.0-debug.apk (signed with the debug key, v2 and v3 schemes).
+Output: dist/raw/mercureal-voice-1.5.0-debug.apk (signed with the debug key, v2 and v3 schemes).
 
 ## Caveats
 
 - Not yet tested on a physical device. SMS and location paths are compile-verified only: carrier delivery reports and GPS fixes need a real phone with a SIM. Expect rough edges around overlay behaviour, screen capture on some vendor ROMs, and offline speech model availability (offline recognition needs the language pack downloaded in Google's speech settings).
 - Debug-signed only. Not for the Play Store.
 - Volume control uses AudioManager. It does not need accessibility access.
+- Screen reader readability depends on the app. Apps that expose text through the accessibility tree (most standard apps) read well. Custom-drawn canvases, WebViews without accessibility enabled, and games often yield little or no text. Pages are read as collected, so order can be off on complex layouts.
+- Usage stats on OEM skins (HiOS, MIUI, One UI, ColorOS) can differ from stock. Some vendors hide or delay foreground-time records, reset them on battery optimisation, or list the usage access toggle under a different menu. Numbers are an estimate of foreground time reported by the system, not an exact count. Not verified on a HiOS device yet.
 - Design follows the MercuReal palette using framework Views. Material3 components are not used.
 
 ## License

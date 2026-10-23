@@ -21,6 +21,8 @@ object Assistant {
         "wifi settings, bluetooth settings\n" +
         "play, pause, next, previous (work without access; sends the media key)\n" +
         "what's playing (needs notification access)\n" +
+        "read screen, stop reading (needs the screen reader on in accessibility settings)\n" +
+        "how much time on whatsapp today, screen time yesterday (needs usage access)\n" +
         "your aliases work here too."
 
     private val yes = setOf("yes", "y", "yep", "yeah", "yup", "do it", "confirm", "go ahead", "sure", "ok", "okay")
