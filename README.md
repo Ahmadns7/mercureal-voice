@@ -2,7 +2,7 @@
 
 Offline-first voice control for Android. Speak a command, the phone does it. Nothing is uploaded. All history, aliases and settings live on the device (SharedPreferences).
 
-Package: com.mercureal.voice · versionName 1.6.0 (versionCode 8) · minSdk 26 · targetSdk 35
+Package: com.mercureal.voice · versionName 1.7.0 (versionCode 9) · minSdk 26 · targetSdk 35
 
 ## Features
 
@@ -37,6 +37,8 @@ Package: com.mercureal.voice · versionName 1.6.0 (versionCode 8) · minSdk 26 �
 | Screen reader: "read screen" paginated TTS, "stop reading" | 1.5.0 | Accessibility service enabled by the user in Accessibility settings (special access, not a runtime prompt) |
 | App usage stats: per-app "how much time" answers, top-5 today with Usage tab | 1.5.0 | PACKAGE_USAGE_STATS (special access, granted in Usage access settings, not a runtime prompt) |
 | Offline wake word: foreground listening, duty cycled, suspends on battery saver or below 15% | 1.6.0 | RECORD_AUDIO; an offline speech service with partial results (the app warns in Home if the phone does not offer offline recognition) |
+| On-device Smart assistant (SmolLM2-135M via llama.cpp JNI, downloaded on consent, falls back to Rules) | 1.7.0 | about 105 MB download, a few hundred MB RAM while running; 3 GB+ RAM recommended |
+| Wake modes: light (default) and full, duty-cycled | 1.7.0 | nothing extra |
 | Themes and accent: dark or light, accent emerald, sky or amber | 1.6.0 | nothing extra |
 | Alternate launcher icons: default, wave, bolt, mono (activity-alias) | 1.6.0 | nothing extra; the launcher can take a few seconds to show the change |
 
@@ -73,8 +75,15 @@ Android has no MEDIA_PROJECTION runtime permission. Screen capture is approved t
 4. Allow display over other apps for the floating mic button.
 5. For screenshots, approve the screen capture prompt the first time you ask.
 
-## Build
+## Architecture (1.7.0)
 
+On-device assistant (Smart mode). The Assistant chat has a Rules/Smart switch. Rules is the original engine: instant, nothing stored. Smart runs a small quantized model (SmolLM2-135M-Instruct, Q4_K_M GGUF, about 105 MB) fully on the phone through llama.cpp (pinned b11838). The model is downloaded only after the user confirms "Download brain" in the chat tab, checked against a SHA-256, and saved in app storage. Inference goes through a minimal JNI bridge (native/llm_jni.cpp) built for arm64-v8a and packed as lib/arm64-v8a/libmercureal_llm.so. The model's reply can be plain text or one JSON action {"say": "...", "run": "..."}. The action runs through the same rules executor as voice commands, so calls, texts, timers and alarms still ask for a yes. If the model is missing, the native library is absent, or the phone has under 3 GB RAM, Smart mode answers with Rules and says why.
+
+Wake word (1.7.0). Still the SpeechRecognizer partial-results approach, not a native keyword model. There was no keyword-spotting SDK available to build in this environment, so the honest change is duty cycling. Wake mode "light" (default) listens for 4 s and rests 12 s. "Full" listens for 6 s and rests 2.5 s, as in 1.6.0. Battery saver and under-15% pause still apply.
+
+RAM and devices: Smart mode needs about 105 MB of storage plus a few hundred MB of RAM while it runs. Phones with 2 GB RAM may struggle or be killed by the system, so use Rules there. Smart mode is a free-form chat on a 135M model, so expect short, sometimes wrong replies. Rules remains the reliable path for commands.
+
+## Build
 Gradle project (for Android Studio or CI):
 
     ./gradlew assembleDebug
@@ -85,7 +94,7 @@ Raw toolchain (no Gradle, used for release builds). Needs JDK 17+, Android SDK w
     export KOTLINC_HOME=/path/to/kotlinc
     bash scripts/build-raw.sh
 
-Output: dist/raw/mercureal-voice-1.5.0-debug.apk (signed with the debug key, v2 and v3 schemes).
+Output: dist/raw/mercureal-voice-1.7.0-debug.apk (includes the arm64 native library; the llama.cpp bridge is built separately, see native/) (signed with the debug key, v2 and v3 schemes).
 
 ## Caveats
 

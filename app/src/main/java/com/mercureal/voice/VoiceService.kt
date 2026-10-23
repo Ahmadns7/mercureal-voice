@@ -378,7 +378,7 @@ class VoiceService : Service() {
         wakeState = WakeState.WINDOW
         setStatus(wakeOnText())
         setOverlayState(true)
-        main.postDelayed(windowEnd, Wake.WINDOW_MS)
+        main.postDelayed(windowEnd, Wake.windowMs(this))
         main.post {
             rec.cancel()
             rec.startListening(recognizerIntent(partial = true))
@@ -391,7 +391,7 @@ class VoiceService : Service() {
         recognizer?.cancel()
         wakeState = WakeState.PAUSE
         setOverlayState(false)
-        scheduleNext(Wake.PAUSE_MS)
+        scheduleNext(Wake.pauseMs(this))
     }
 
     private fun scheduleNext(delayMs: Long) {
@@ -483,7 +483,7 @@ class VoiceService : Service() {
                 if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) recognizer?.cancel()
                 wakeState = WakeState.PAUSE
                 setOverlayState(false)
-                scheduleNext(if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 3000 else Wake.PAUSE_MS)
+                scheduleNext(if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 3000 else Wake.pauseMs(this))
             }
             else -> Unit
         }

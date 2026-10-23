@@ -16,7 +16,7 @@ echo "[1/6] compile resources"
 
 echo "[2/6] link manifest + resources"
 "$BT/aapt2" link -o "$OUT/base.apk" -I "$ANDROID_JAR" --manifest "$ROOT/app/src/main/AndroidManifest.xml" \
-  --min-sdk-version 26 --target-sdk-version 35 --version-code 8 --version-name 1.6.0 \
+  --min-sdk-version 26 --target-sdk-version 35 --version-code 9 --version-name 1.7.0 \
   --java "$OUT/gen" "$OUT/res.zip"
 
 echo "[3/6] compile Kotlin"
@@ -49,6 +49,12 @@ echo "class check ok: $(wc -l < "$OUT/expected-app-classes.txt") app classes, $(
 echo "[5/6] package + align"
 cp "$OUT/base.apk" "$OUT/unsigned.apk"
 (cd "$OUT/dex" && zip -q "$OUT/unsigned.apk" classes*.dex)
+# Native libs: arm64-v8a only (the llama.cpp JNI bridge). Stored uncompressed so the .so loads straight from the APK.
+if [ -d "$ROOT/app/src/main/jniLibs" ]; then
+  rm -rf "$OUT/lib" && mkdir -p "$OUT/lib" && cp -r "$ROOT/app/src/main/jniLibs/." "$OUT/lib/"
+  (cd "$OUT" && zip -q -0 "$OUT/unsigned.apk" $(cd lib && find . -name "*.so" | sed "s|^\./|lib/|"))
+  unzip -l "$OUT/unsigned.apk" | grep -q "lib/arm64-v8a/libmercureal_llm.so" || echo "warn: native lib not packed under lib/arm64-v8a" >&2
+fi
 "$BT/zipalign" -f -p 4 "$OUT/unsigned.apk" "$OUT/aligned.apk"
 
 echo "[6/6] sign with debug key"
@@ -58,10 +64,10 @@ if [ ! -f "$KS" ]; then
     -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" >/dev/null 2>&1
 fi
 "$BT/apksigner" sign --ks "$KS" --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android \
-  --out "$OUT/mercureal-voice-1.6.0-debug.apk" "$OUT/aligned.apk"
-"$BT/apksigner" verify --verbose "$OUT/mercureal-voice-1.6.0-debug.apk"
+  --out "$OUT/mercureal-voice-1.7.0-debug.apk" "$OUT/aligned.apk"
+"$BT/apksigner" verify --verbose "$OUT/mercureal-voice-1.7.0-debug.apk"
 
 echo "[smoke] aapt2 badging + zip test"
-"$BT/aapt2" dump badging "$OUT/mercureal-voice-1.6.0-debug.apk" | grep -E "^package|sdkVersion|targetSdk|launchable-activity|uses-permission" 
-unzip -tq "$OUT/mercureal-voice-1.6.0-debug.apk"
-echo "built: $OUT/mercureal-voice-1.6.0-debug.apk"
+"$BT/aapt2" dump badging "$OUT/mercureal-voice-1.7.0-debug.apk" | grep -E "^package|sdkVersion|targetSdk|launchable-activity|uses-permission" 
+unzip -tq "$OUT/mercureal-voice-1.7.0-debug.apk"
+echo "built: $OUT/mercureal-voice-1.7.0-debug.apk"

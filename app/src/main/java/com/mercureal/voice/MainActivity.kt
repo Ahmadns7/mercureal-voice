@@ -370,6 +370,24 @@ class MainActivity : Activity() {
             "Listens in short windows with rests, stops after 5 minutes of silence, and pauses on battery saver or under 15% battery. Matching on partial results is approximate. Battery use depends on your phone's speech service.",
             12f, muted
         ), lp(6))
+        wake.addView(label("Wake mode", 13f, muted), lp(8))
+        val modeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        fun modeButton(mode: String, name: String, note: String) = button(
+            if (Store.wakeMode(this@MainActivity) == mode) "$name (on)" else name,
+            primary = Store.wakeMode(this@MainActivity) == mode
+        ) {
+            Store.setWakeMode(this@MainActivity, mode)
+            Toast.makeText(this@MainActivity, "$name wake: $note", Toast.LENGTH_SHORT).show()
+            if (VoiceService.isRunning()) { VoiceService.stop(this@MainActivity); VoiceService.start(this@MainActivity) }
+            showTab("home")
+        }
+        modeRow.addView(modeButton("light", "Light", "4 s listens, 12 s rests, best battery"), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        modeRow.addView(modeButton("full", "Full", "6 s listens, 2.5 s rests, catches more"), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(6) })
+        wake.addView(modeRow, lp(4))
+        wake.addView(label(
+            "Light: fewer recognizer starts, so it uses less battery but can miss a fast phrase. Full: more responsive, uses more battery. Neither is a true always-on keyword model: both use the phone's speech service.",
+            11f, muted
+        ), lp(4))
         // Offline partial results are what the wake word needs. Only Android 12+ can report this.
         val offline = if (Build.VERSION.SDK_INT >= 31) SpeechRecognizer.isOnDeviceRecognitionAvailable(this) else null
         wake.addView(label(
@@ -491,6 +509,28 @@ class MainActivity : Activity() {
         }
         msgs.forEach { list.addView(bubble(it.role, it.text), lp(4)) }
 
+        // Mode switch: Rules is instant and stores nothing. Smart uses the on-device model.
+        val smart = Store.assistantMode(this) == "smart"
+        val modeBar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        modeBar.addView(button(if (!smart) "Rules (on)" else "Rules", primary = !smart) {
+            Store.setAssistantMode(this, "rules"); showTab("chat")
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        modeBar.addView(button(if (smart) "Smart (on)" else "Smart", primary = smart) {
+            Store.setAssistantMode(this, "smart"); showTab("chat")
+        }.apply { layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(6) } })
+        b.addView(modeBar, lp(4))
+        val brainNote = when {
+            Llm.blocker(this) == null -> "Smart mode: brain ready on this phone. free-form chat, streams replies, and runs commands."
+            Llm.ready(this) -> "Smart mode: ${Llm.blocker(this)}, using rules."
+            else -> "Smart mode needs the brain (about 105 MB, one time, download on this phone). Until then it uses rules."
+        }
+        b.addView(label(brainNote, 11f, muted), lp(2))
+        if (!Llm.ready(this) && Llm.ramMb(this) >= Llm.MIN_RAM_MB) {
+            b.addView(button("Download brain (105 MB)", primary = false) { confirmBrainDownload() }.apply { layoutParams = lp(2) })
+        } else if (Llm.ready(this)) {
+            b.addView(button("Delete brain", primary = false) { Llm.deleteModel(this); showTab("chat") }.apply { layoutParams = lp(2) })
+        }
+
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val input = field("message")
         input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
@@ -513,6 +553,32 @@ class MainActivity : Activity() {
         }.apply { layoutParams = lp(2) })
 
         scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    private fun confirmBrainDownload() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Download the brain?")
+            .setMessage("About 105 MB, one time. It is saved on this phone and used for Smart mode. Chat stays on this phone, the download is the only network use, and you can delete it any time.")
+            .setPositiveButton("Download") { _, _ -> startBrainDownload() }
+            .setNegativeButton("Not now", null)
+            .show()
+    }
+
+    private fun startBrainDownload() {
+        val status = label("downloading the brain...", 12f, muted)
+        Toast.makeText(this, "downloading the brain, check the chat tab", Toast.LENGTH_SHORT).show()
+        Thread({
+            val result = Llm.download(this) { got, total ->
+                if (got % (5L * 1024 * 1024) < 64 * 1024) {
+                    runOnUiThread { status.text = "downloading the brain: ${got / 1_048_576} of ${total / 1_048_576} MB" }
+                }
+            }
+            runOnUiThread {
+                result.onSuccess { Toast.makeText(this, "brain ready", Toast.LENGTH_SHORT).show() }
+                    .onFailure { Toast.makeText(this, it.message ?: "download failed", Toast.LENGTH_LONG).show() }
+                if (tab == "chat") showTab("chat")
+            }
+        }, "brain-download").start()
     }
 
     private fun bubble(role: String, msg: String): LinearLayout {

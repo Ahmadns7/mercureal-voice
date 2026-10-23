@@ -31,8 +31,80 @@ object Assistant {
     private val helpWords = setOf("help", "what can you do", "what can u do", "commands", "what can i say", "what do you do", "menu")
     private val appWords = setOf("apps", "list apps", "show apps", "all apps", "my apps")
 
-    /** Answers one message. [done] runs once, on the main thread (screenshots reply later). */
+    /**
+     * Answers one message. Smart mode uses the on-device model when it is downloaded and
+     * usable; otherwise (or when a yes/no is pending) it answers with rules, with a notice.
+     * [done] runs once, on the main thread.
+     */
     fun respond(ctx: Context, raw: String, done: (Reply) -> Unit) {
+        val app = ctx.applicationContext
+        val waiting = Store.pending(app)
+        if (Store.assistantMode(app) != "smart" || waiting != null) {
+            rulesRespond(app, raw, done)
+            return
+        }
+        val why = Llm.blocker(app)
+        if (why != null) {
+            rulesRespond(app, raw) { r -> done(Reply("smart mode is off: $why. answered with rules.\n\n${r.text}")) }
+            return
+        }
+        smartRespond(app, raw, done)
+    }
+
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** Streams a model reply on a worker thread, then runs any action it asks for. */
+    private fun smartRespond(app: Context, raw: String, done: (Reply) -> Unit) {
+        val history = Store.chat(app).takeLast(8)
+        val roles = ArrayList<String>().apply { add("system"); addAll(history.map { if (it.role == "u") "user" else "assistant" }) }
+        val contents = ArrayList<String>().apply { add(SYSTEM_PROMPT); addAll(history.map { it.text }) }
+        if (history.lastOrNull()?.text != raw) { roles.add("user"); contents.add(raw) }
+        Thread({
+            if (!Llm.ensureLoaded(app)) {
+                main.post { rulesRespond(app, raw) { r -> done(Reply("smart mode couldn't load the model, answered with rules.\n\n${r.text}")) } }
+                return@Thread
+            }
+            val full = Llm.generate(roles, contents) { _ -> }
+            main.post {
+                if (full == null) {
+                    done(Reply("the brain is busy or failed. try again in a moment"))
+                    return@post
+                }
+                val act = parseAction(full)
+                if (act == null) {
+                    done(Reply(full.trim().ifBlank { "i didn't get that. type help to see what i can do" }))
+                } else {
+                    val say = act.first.ifBlank { "on it" }
+                    rulesRespond(app, act.second) { r -> done(Reply("$say\n${r.text}")) }
+                }
+            }
+        }, "mercureal-llm").start()
+    }
+
+    /** Pulls {"say": "...", "run": "..."} out of a model reply. Null when there is no action. */
+    internal fun parseAction(reply: String): Pair<String, String>? {
+        val start = reply.indexOf('{')
+        val end = reply.lastIndexOf('}')
+        if (start < 0 || end <= start) return null
+        return try {
+            val o = org.json.JSONObject(reply.substring(start, end + 1))
+            val run = o.optString("run", "").trim()
+            if (run.isEmpty()) null else Pair(o.optString("say", "").trim(), run)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    internal const val SYSTEM_PROMPT = "You are the on-device assistant of the Mercureal Voice app. " +
+        "Answer briefly and plainly, in lowercase. When the user wants the phone to do something, reply " +
+        "with ONLY one JSON object: {\"say\": \"short confirmation\", \"run\": \"command\"}. The command must be one " +
+        "of these phrases: open <app>, call <name or number>, text <name> saying <message>, timer <n> minutes, " +
+        "alarm <time>, flashlight on, flashlight off, volume up, volume down, mute, battery, what time is it, " +
+        "screenshot, play, pause, next, previous, wifi settings, bluetooth settings, help. " +
+        "Calls, texts, timers and alarms ask the user to confirm first. Otherwise reply in plain text."
+
+    /** The rules engine. Also the executor Smart mode's actions run through. */
+    fun rulesRespond(ctx: Context, raw: String, done: (Reply) -> Unit) {
         val app = ctx.applicationContext
         val t = AppIndex.normalize(raw)
 

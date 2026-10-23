@@ -15,6 +15,8 @@ object Store {
     private const val KEY_PENDING = "chat_pending"
     private const val KEY_WAKE = "wake_enabled"
     private const val KEY_WAKE_PHRASE = "wake_phrase"
+    private const val KEY_WAKE_MODE = "wake_mode"
+    private const val KEY_ASSIST_MODE = "assistant_mode"
     private const val KEY_THEME = "theme"
     private const val KEY_ACCENT = "accent"
     private const val KEY_ICON = "icon"
@@ -44,6 +46,20 @@ object Store {
 
     fun setWakeEnabled(ctx: Context, value: Boolean) {
         prefs(ctx).edit().putBoolean(KEY_WAKE, value).apply()
+    }
+
+    /** "light" (longer rests, fewer windows) or "full" (1.6.0 duty cycle). */
+    fun wakeMode(ctx: Context): String = prefs(ctx).getString(KEY_WAKE_MODE, "light") ?: "light"
+
+    fun setWakeMode(ctx: Context, mode: String) {
+        prefs(ctx).edit().putString(KEY_WAKE_MODE, if (mode == "full") "full" else "light").apply()
+    }
+
+    /** "rules" (default) or "smart" (on-device model, falls back to rules when unavailable). */
+    fun assistantMode(ctx: Context): String = prefs(ctx).getString(KEY_ASSIST_MODE, "rules") ?: "rules"
+
+    fun setAssistantMode(ctx: Context, mode: String) {
+        prefs(ctx).edit().putString(KEY_ASSIST_MODE, if (mode == "smart") "smart" else "rules").apply()
     }
 
     fun wakePhrase(ctx: Context): String =

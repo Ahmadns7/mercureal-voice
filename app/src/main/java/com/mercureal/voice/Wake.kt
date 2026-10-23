@@ -14,8 +14,13 @@ import android.speech.SpeechRecognizer
  */
 object Wake {
     const val DEFAULT_PHRASE = "mercureal"
-    const val WINDOW_MS = 6_000L          // one listen window
-    const val PAUSE_MS = 2_500L           // rest between windows
+    const val WINDOW_MS = 6_000L          // full mode: one listen window
+    const val PAUSE_MS = 2_500L           // full mode: rest between windows
+    const val LIGHT_WINDOW_MS = 4_000L    // light mode: shorter listen window
+    const val LIGHT_PAUSE_MS = 12_000L    // light mode: much longer rest, far fewer recognizer starts
+
+    fun windowMs(ctx: Context): Long = if (Store.wakeMode(ctx) == "full") WINDOW_MS else LIGHT_WINDOW_MS
+    fun pauseMs(ctx: Context): Long = if (Store.wakeMode(ctx) == "full") PAUSE_MS else LIGHT_PAUSE_MS
     const val SILENCE_STOP_MS = 300_000L  // stop the loop after 5 minutes with no speech heard
     const val RECHECK_MS = 60_000L        // how often a suspended loop re-checks battery and saver
     const val MAX_ERRORS = 5              // consecutive speech service failures before the loop gives up
