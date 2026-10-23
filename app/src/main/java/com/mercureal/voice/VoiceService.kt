@@ -37,6 +37,45 @@ class VoiceService : Service() {
     private var listening = false
     private var continuous = true
     private var wm: WindowManager? = null
+    private var batteryWarned = false
+    private var batteryRegistered = false
+    private val batteryReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: Context?, intent: Intent?) {
+            if (intent == null) return
+            val lvl = intent.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
+            val scale = intent.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1)
+            if (lvl < 0 || scale <= 0) return
+            val pct = lvl * 100 / scale
+            val status = intent.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1)
+            val charging = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == android.os.BatteryManager.BATTERY_STATUS_FULL
+            if (charging || pct >= 20) { batteryWarned = false; return }
+            // Low battery while the listener is running: warn once per discharge.
+            if (pct < 15 && !batteryWarned) {
+                batteryWarned = true
+                notifyLowBattery(pct)
+            }
+        }
+    }
+
+    private fun notifyLowBattery(pct: Int) {
+        try {
+            if (Build.VERSION.SDK_INT >= 26) {
+                getSystemService(NotificationManager::class.java).createNotificationChannel(
+                    NotificationChannel(BATTERY_CHANNEL, "Battery warning", NotificationManager.IMPORTANCE_DEFAULT)
+                )
+            }
+            val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, BATTERY_CHANNEL) else Notification.Builder(this)
+            val n = b.setContentTitle("Battery low ($pct%)")
+                .setContentText("MercuReal is still listening. Charge soon, or turn off Continuous listening to save battery.")
+                .setSmallIcon(android.R.drawable.ic_lock_idle_low_battery)
+                .setAutoCancel(true)
+                .build()
+            getSystemService(NotificationManager::class.java).notify(BATTERY_NOTIF_ID, n)
+        } catch (e: Throwable) {
+            android.util.Log.w("MercuReal", "battery warning failed", e)
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -57,6 +96,12 @@ class VoiceService : Service() {
             CrashReport.report(this, "voice service start", e)
             stopSelf()
             return
+        }
+        try {
+            registerReceiver(batteryReceiver, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            batteryRegistered = true
+        } catch (e: Throwable) {
+            android.util.Log.w("MercuReal", "battery receiver not registered", e)
         }
         try {
             if (Settings.canDrawOverlays(this)) showOverlay()
@@ -91,6 +136,10 @@ class VoiceService : Service() {
     override fun onDestroy() {
         instance = null
         listening = false
+        if (batteryRegistered) {
+            try { unregisterReceiver(batteryReceiver) } catch (_: Throwable) {}
+            batteryRegistered = false
+        }
         recognizer?.destroy()
         recognizer = null
         overlay?.let { wm?.removeView(it) }
@@ -256,6 +305,8 @@ class VoiceService : Service() {
     companion object {
         const val CHANNEL_ID = "mercureal_voice"
         const val NOTIF_ID = 1001
+        const val BATTERY_CHANNEL = "mercureal_battery"
+        const val BATTERY_NOTIF_ID = 1002
         const val EXTRA_ACTION = "action"
         const val ACTION_STOP = "stop"
         const val ACTION_PROJECTION = "projection"

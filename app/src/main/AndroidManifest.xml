@@ -14,6 +14,14 @@
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- Android 11+ package visibility: lets the app list and open every launchable app. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
@@ -42,6 +50,42 @@
             android:exported="false"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:excludeFromRecents="true" />
+
+        <!-- Share any text to MercuReal Voice: it runs as a command. -->
+        <activity
+            android:name=".ShareActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
+        <!-- Quick settings tiles: add from the quick settings edit panel. -->
+        <service
+            android:name=".FlashlightTileService"
+            android:exported="true"
+            android:label="Flashlight (MercuReal)"
+            android:icon="@drawable/ic_launcher_foreground"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".ScreenshotTileService"
+            android:exported="true"
+            android:label="Screenshot (MercuReal)"
+            android:icon="@drawable/ic_launcher_foreground"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
 
         <service
             android:name=".VoiceService"

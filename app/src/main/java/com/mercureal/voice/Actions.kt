@@ -54,21 +54,22 @@ object Actions {
     private fun granted(ctx: Context, perm: String) =
         ctx.checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED
 
+    fun isTorchOn(): Boolean = torchOn
+
+    /** Opens the best fuzzy match among all launchable apps. See [AppIndex.rank] for the matching tiers. */
     fun openApp(ctx: Context, query: String): Result {
+        val ranked = AppIndex.rank(AppIndex.all(ctx), query)
+        val best = ranked.firstOrNull() ?: return Result(false, "no app named $query")
+        return launchPackage(ctx, best.first)
+    }
+
+    /** Launches one app from the index (used by the Apps screen and by open-app commands). */
+    fun launchPackage(ctx: Context, app: AppEntry): Result {
         val pm = ctx.packageManager
-        val q = query.lowercase().trim()
-        val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val apps = pm.queryIntentActivities(launcher, 0).map {
-            it.loadLabel(pm).toString() to it.activityInfo.packageName
-        }
-        val match = apps.firstOrNull { it.first.lowercase() == q }
-            ?: apps.firstOrNull { it.first.lowercase().contains(q) }
-            ?: apps.firstOrNull { it.first.length >= 3 && q.contains(it.first.lowercase()) }
-            ?: return Result(false, "no app named $query")
-        val intent = pm.getLaunchIntentForPackage(match.second)
-            ?: return Result(false, "${match.first} can't be launched")
-        return if (start(ctx, intent)) Result(true, "opening ${match.first}")
-        else Result(false, "couldn't open ${match.first}")
+        val intent = pm.getLaunchIntentForPackage(app.pkg)
+            ?: return Result(false, "${app.label} can't be launched")
+        return if (start(ctx, intent)) Result(true, "opening ${app.label}")
+        else Result(false, "couldn't open ${app.label}")
     }
 
     /** Looks up the first contact whose display name contains [name]. Needs READ_CONTACTS. */
@@ -175,7 +176,8 @@ object Actions {
         val level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         val charging = bm.isCharging
         val tail = if (charging) ", charging" else ""
-        return Result(true, "battery is at $level percent$tail")
+        val low = if (!charging && level in 0..14) ". low battery, consider charging or turning off continuous listening" else ""
+        return Result(true, "battery is at $level percent$tail$low")
     }
 
     fun settingsPanel(ctx: Context, panel: String): Result {
