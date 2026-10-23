@@ -4,7 +4,7 @@
 
 Offline-first voice control for Android. Speak a command, the phone does it. Nothing is uploaded. All history, aliases and settings live on the device (SharedPreferences).
 
-Package: com.mercureal.voice · versionName 1.9.0 (versionCode 12) · minSdk 26 · targetSdk 35
+Package: com.mercureal.voice · versionName 2.0.0 (versionCode 13) · minSdk 26 · targetSdk 35 · Wear OS companion (wear/, minSdk 30)
 
 ## Features
 
@@ -34,6 +34,20 @@ Honest limits:
 - Recognition depends on the phone's speech service (Google by default). If it does not transcribe accented Pidgin, Yoruba or Hausa speech correctly, the matcher gets the wrong text and cannot fix it. Try the language setting that matches how you speak.
 - Replies are spoken in English in 1.9.0. Only the command phrases are multilingual.
 - The phrase tables are a starting set, not full grammars. Phrases outside the table are handled by the English grammar as before.
+
+## Version table
+
+| Version | Highlights |
+| --- | --- |
+| 2.0.0 | Wear OS companion (voice query from the watch, spoken reply back to the watch via MessageClient). Promo site in site/ for Vercel. |
+| 1.9.0 | Naija language command phrases. |
+| 1.8.0 | Widgets, car mode. |
+| 1.7.0 | On-device Smart assistant (SmolLM2), wake modes. |
+| 1.6.0 | Offline wake word, themes, alternate icons. |
+| 1.5.0 | Screen reader, app usage stats. |
+| 1.4.0 | SMS with confirm, emergency mode. |
+| 1.3.0 | Media control, notification reading. |
+| 1.2.0 | Routines, reminders. |
 
 ## Feature table (1.8.0)
 
@@ -88,6 +102,10 @@ Android has no MEDIA_PROJECTION runtime permission. Screen capture is approved t
 4. Allow display over other apps for the floating mic button.
 5. For screenshots, approve the screen capture prompt the first time you ask.
 
+## Website
+
+The promo page is a static site in site/ (index.html, styles.css, vercel.json). No build step. To deploy: in Vercel, choose Add New, Project, import the mercureal-voice GitHub repo, and set the Root Directory to site. Framework preset: Other. No build command, no output directory. The download button links to https://github.com/Ahmadns7/mercureal-voice/releases/latest, so the site does not need a redeploy for each release. The screenshots are placeholders until real images are added to site/.
+
 ## Architecture (1.7.0)
 
 On-device assistant (Smart mode). The Assistant chat has a Rules/Smart switch. Rules is the original engine: instant, nothing stored. Smart runs a small quantized model (SmolLM2-135M-Instruct, Q4_K_M GGUF, about 105 MB) fully on the phone through llama.cpp (pinned b11838). The model is downloaded only after the user confirms "Download brain" in the chat tab, checked against a SHA-256, and saved in app storage. Inference goes through a minimal JNI bridge (native/llm_jni.cpp) built for arm64-v8a and packed as lib/arm64-v8a/libmercureal_llm.so. The model's reply can be plain text or one JSON action {"say": "...", "run": "..."}. The action runs through the same rules executor as voice commands, so calls, texts, timers and alarms still ask for a yes. If the model is missing, the native library is absent, or the phone has under 3 GB RAM, Smart mode answers with Rules and says why.
@@ -107,12 +125,23 @@ Raw toolchain (no Gradle, used for release builds). Needs JDK 17+, Android SDK w
     export KOTLINC_HOME=/path/to/kotlinc
     bash scripts/build-raw.sh
 
-Output: dist/raw/mercureal-voice-1.9.0-debug.apk by default (debug key, v2 and v3 schemes). Set MERCUREAL_KEYSTORE (plus MERCUREAL_KEY_ALIAS, MERCUREAL_STORE_PASS, MERCUREAL_KEY_PASS) to get a release-signed APK and an AAB. Keystore setup and the Play and F-Droid steps are in RELEASING.md. The build gate runs the Naija phrase unit test first. The llama.cpp bridge is built separately, see native/.
+Output: dist/raw/mercureal-voice-2.0.0-debug.apk by default (debug key, v2 and v3 schemes). Set MERCUREAL_KEYSTORE (plus MERCUREAL_KEY_ALIAS, MERCUREAL_STORE_PASS, MERCUREAL_KEY_PASS) to get a release-signed APK and an AAB. Keystore setup and the Play and F-Droid steps are in RELEASING.md. The build gate runs the Naija phrase unit test first. The llama.cpp bridge is built separately, see native/.
+
+## Wear OS companion (2.0.0)
+
+The wear/ module is a single Views-only activity. Tap the big mic button, speak a command, and the watch sends the recognized text to the phone over the Wearable MessageClient (path /mercureal/command). The phone runs it through the same command engine as the phone mic (VoiceService.execute, source "watch") and speaks the reply. While a watch request is pending, the phone's spoken confirmation is sent back to the watch (path /mercureal/reply), where it shows as text and a short vibration.
+
+Phone side: WearListenerService (in the app manifest) and WearBridge. The raw build packages the Wearable client jars (play-services-base, basement, tasks, wearable 18.x) into the phone APK from dist/wear-deps. Play services must be present on the phone (it normally is).
+
+Build the watch app: open the project in Android Studio (it includes :wear through settings.gradle.kts), select the wear configuration, and run it on a Wear OS 3+ watch (minSdk 30) paired to the phone. Or from the command line: ./gradlew :wear:assembleDebug, then install the APK with adb to the watch. The raw toolchain does not build wear/.
+
+Status: the wear Kotlin sources and resources compile in the sandbox (kotlinc and aapt2 against android.jar and the Wearable jars). They have not been installed on a real watch. Pairing, message delivery, the voice recognition on the watch, and the reply vibration are not verified on hardware. The watch needs its own speech recognition (the Wear OS voice input). Replies are only sent back when a request arrived from the watch, and only the first spoken line after it.
 
 ## Caveats
 
 - Not yet tested on a physical device. SMS and location paths are compile-verified only: carrier delivery reports and GPS fixes need a real phone with a SIM. Expect rough edges around overlay behaviour, screen capture on some vendor ROMs, and offline speech model availability (offline recognition needs the language pack downloaded in Google's speech settings).
-- Debug-signed only. Not for the Play Store.
+- Debug-signed only when MERCUREAL_KEYSTORE is not set. Not for the Play Store until signed with a release key.
+- Wear OS companion: not run on a real watch yet (see the Wear OS section).
 - Volume control uses AudioManager. It does not need accessibility access.
 - Screen reader readability depends on the app. Apps that expose text through the accessibility tree (most standard apps) read well. Custom-drawn canvases, WebViews without accessibility enabled, and games often yield little or no text. Pages are read as collected, so order can be off on complex layouts.
 - Usage stats on OEM skins (HiOS, MIUI, One UI, ColorOS) can differ from stock. Some vendors hide or delay foreground-time records, reset them on battery optimisation, or list the usage access toggle under a different menu. Numbers are an estimate of foreground time reported by the system, not an exact count. Not verified on a HiOS device yet.

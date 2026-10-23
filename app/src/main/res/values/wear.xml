@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Play services client version the wearable APIs check for. -->
+    <integer name="google_play_services_version">18400000</integer>
+    <!-- Advertises this phone to the Wear OS companion app (capability lookup). -->
+    <string-array name="android_wear_capabilities">
+        <item>mercureal_voice_phone</item>
+    </string-array>
+</resources>

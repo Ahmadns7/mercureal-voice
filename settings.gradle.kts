@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "MercuReal Voice"
 include(":app")
+include(":wear")

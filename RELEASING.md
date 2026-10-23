@@ -29,12 +29,12 @@ Load it and build:
     export BUNDLETOOL_JAR=/path/to/bundletool-all-1.18.3.jar
     bash scripts/build-raw.sh
 
-With `MERCUREAL_KEYSTORE` set, the script signs the APK with the release key and writes `dist/raw/mercureal-voice-1.9.0-release.apk`, verified with `apksigner verify`. It also signs the AAB with jarsigner and verifies it. Without that variable, it falls back to the debug key and writes `dist/raw/mercureal-voice-1.9.0-debug.apk`. The debug-signed APK is for sideloading only, and the debug-signed AAB is rejected by Play.
+With `MERCUREAL_KEYSTORE` set, the script signs the APK with the release key and writes `dist/raw/mercureal-voice-2.0.0-release.apk`, verified with `apksigner verify`. It also signs the AAB with jarsigner and verifies it. Without that variable, it falls back to the debug key and writes `dist/raw/mercureal-voice-2.0.0-debug.apk`. The debug-signed APK is for sideloading only, and the debug-signed AAB is rejected by Play.
 
 Verify a signed build:
 
-    apksigner verify --verbose --print-certs dist/raw/mercureal-voice-1.9.0-release.apk
-    jarsigner -verify dist/raw/mercureal-voice-1.9.0.aab
+    apksigner verify --verbose --print-certs dist/raw/mercureal-voice-2.0.0-release.apk
+    jarsigner -verify dist/raw/mercureal-voice-2.0.0.aab
 
 The release certificate's SHA-256 fingerprint should match the one you recorded when you created the key. Record it in your own notes.
 
@@ -69,7 +69,7 @@ Gradle reads the signing values from `signingConfigs` when you add one that read
 - [ ] Content rating questionnaire.
 - [ ] Target audience: 18+ or general, no ads, no in-app purchases.
 - [ ] Test on your own phone from the internal track before promoting to production.
-- [ ] Release notes: copy the v1.9.0 section of the GitHub release notes.
+- [ ] Release notes: copy the v2.0.0 section of the GitHub release notes.
 
 ## 4. F-Droid submission steps
 
@@ -78,7 +78,7 @@ F-Droid builds from source, so the submission is a metadata file in fdroiddata.
 1. Confirm the repo builds without any secret: the release APK from `build-raw.sh` uses the debug key when `MERCUREAL_KEYSTORE` is unset, and F-Droid signs with its own key. Keep the tagged source reproducible.
 2. Fork https://gitlab.com/fdroid/fdroiddata and create `metadata/com.mercureal.voice.yml`.
 3. Required fields: `Categories`, `License` (must be an OSI license; the repo's LICENSE file), `SourceCode`, `IssueTracker`, `AutoName: MercuReal Voice`, `RepoType: git`, `Repo: https://github.com/Ahmadns7/mercureal-voice.git`.
-4. Build section: `commit: v1.9.0`, `versionName: 1.9.0`, `versionCode: 12`, and a `gradle` or `output` build block that matches your build. Because the build here uses raw tools, you may need a custom `prebuild` or ask the F-Droid maintainers which build method fits.
+4. Build section: `commit: v2.0.0`, `versionName: 2.0.0`, `versionCode: 12`, and a `gradle` or `output` build block that matches your build. Because the build here uses raw tools, you may need a custom `prebuild` or ask the F-Droid maintainers which build method fits.
 5. Anti-features: declare `NonFreeNet` only if a dependency needs it. The Smart mode model download (about 105 MB from Hugging Face) is a network feature: declare it as an anti-feature if F-Droid's rules require it, and say it is opt-in.
 6. Open a merge request against fdroiddata. The F-Droid build server runs `fdroid lint`, `fdroid build`, and `fdroid checkupdates` before merging.
 7. After merge, check the build log on https://f-droid.org/en/packages/com.mercureal.voice/ and fix any reproducibility issues.

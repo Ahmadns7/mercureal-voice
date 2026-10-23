@@ -12,6 +12,7 @@ import java.util.Locale
  * [say] takes an optional completion callback (main thread); routines use it to wait between steps.
  */
 class Speaker private constructor(context: Context) {
+    private val appCtx = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
     private var ready = false
     private val pending = ArrayList<Pair<String, (() -> Unit)?>>()
@@ -62,6 +63,7 @@ class Speaker private constructor(context: Context) {
         val id = "mv-${System.nanoTime()}"
         if (done != null) synchronized(callbacks) { callbacks[id] = done }
         val clipped = if (text.length > 3500) text.take(3500) else text
+        WearBridge.offer(appCtx, clipped)
         tts.speak(clipped, TextToSpeech.QUEUE_FLUSH, null, id)
     }
 
