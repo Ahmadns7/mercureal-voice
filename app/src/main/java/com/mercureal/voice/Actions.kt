@@ -39,6 +39,17 @@ object Actions {
         is Command.Volume -> volume(ctx, cmd)
         Command.Screenshot -> Result(false, "screenshots are handled by the service")
         is Command.Unknown -> Result(false, "sorry, i didn't catch a command for that")
+        is Command.RunRoutine -> Result(true, "running ${cmd.name}")
+        is Command.Remind -> remind(ctx, cmd.raw)
+    }
+
+    fun remind(ctx: Context, raw: String): Result {
+        val p = Reminders.parse(raw)
+            ?: return Result(false, "i need a what and a time, like remind me to call ada at 6pm")
+        val r = Reminders.add(ctx, p)
+        val whenText = java.text.SimpleDateFormat("EEE h:mm a", java.util.Locale.getDefault())
+            .format(java.util.Date(r.atMillis))
+        return Result(true, "ok, i'll remind you to ${r.text} on $whenText")
     }
 
     private fun start(ctx: Context, intent: Intent): Boolean {

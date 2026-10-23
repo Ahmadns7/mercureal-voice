@@ -344,9 +344,34 @@ class VoiceService : Service() {
                 }
                 return
             }
+            if (cmd is Command.RunRoutine) {
+                runRoutine(app, cmd.name, raw, speaker)
+                return
+            }
             val result = Actions.run(app, cmd)
             Store.addHistory(app, raw, result.speech, result.ok)
             speaker.say(result.speech)
+        }
+
+        /** Runs routine steps in order, waiting for each step's speech to finish before the next. */
+        fun runRoutine(app: Context, name: String, raw: String, speaker: Speaker) {
+            val routine = Routines.find(app, name)
+            if (routine == null) {
+                speaker.say("no routine called $name")
+                return
+            }
+            val steps = routine.steps
+            val handler = android.os.Handler(android.os.Looper.getMainLooper())
+            fun next(i: Int) {
+                if (i >= steps.size) {
+                    Store.addHistory(app, raw, "ran ${routine.name}: ${steps.size} steps", true)
+                    return
+                }
+                val cmd = CommandParser.parse(steps[i], Store.aliases(app))
+                val result = Actions.run(app, cmd)
+                speaker.say(result.speech) { handler.postDelayed({ next(i + 1) }, 250) }
+            }
+            next(0)
         }
 
         /** Speaks a short confirmation from anywhere in the app. */

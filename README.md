@@ -15,6 +15,13 @@ Package: com.mercureal.voice · versionName 1.0.1 · minSdk 26 · targetSdk 35
 - Quick actions grid on the home screen.
 - Dark UI, emerald accent (#10B981) on #0B0F0E.
 - Onboarding screen covering permissions and privacy. Reopen from the Home tab.
+- Routines (new in 1.2.0): a spoken phrase runs a chain of commands in order, waiting for each step's speech before the next. Two examples ship ("good morning", "wind down"). Edit or add routines in the app.
+- Reminders (new in 1.2.0): "remind me to X at 6pm", "remind me to X tomorrow at 9", or "remind me to X in 20 minutes". Stored on-device, fired by an exact alarm with a spoken announcement and notification. Reminders are re-armed after reboot.
+
+## Feature table (1.2.0)
+
+Shipped: routines, reminders (exact alarm, reboot re-arm).
+Deferred to 1.3.0: wake word, notification reading, SMS send, media control, screen reader, emergency mode, usage stats, themes and icon packs.
 
 ## Permissions
 
@@ -26,6 +33,8 @@ Package: com.mercureal.voice · versionName 1.0.1 · minSdk 26 · targetSdk 35
 - SYSTEM_ALERT_WINDOW: floating mic overlay (granted in system settings).
 - POST_NOTIFICATIONS: foreground service notification (Android 13+).
 - com.android.alarm.permission.SET_ALARM: set timers and alarms through the clock app.
+- RECEIVE_BOOT_COMPLETED: re-arm saved reminders after a reboot (no runtime prompt).
+- SCHEDULE_EXACT_ALARM: fire reminders on time. On Android 12+ the user can deny this in Settings. Reminders then fire late, not on time. The app still schedules them, but the timing is inexact.
 - ACCESS_NETWORK_STATE: lets the speech engine check connectivity. Not used to send data.
 
 Android has no MEDIA_PROJECTION runtime permission. Screen capture is approved through the system consent dialog, which the app shows once per session. The grant expires when the session ends.

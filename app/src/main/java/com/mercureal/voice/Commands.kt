@@ -17,6 +17,10 @@ sealed class Command {
     /** op: "up", "down", "mute", "unmute", "set" (level 0..100). */
     data class Volume(val op: String, val level: Int? = null) : Command()
     data class Unknown(val text: String) : Command()
+    /** Runs a saved routine by name, in order, speaking between steps. */
+    data class RunRoutine(val name: String) : Command()
+    /** "remind me to X at 6pm": parsed by [Reminders.parse] at run time. */
+    data class Remind(val raw: String) : Command()
 }
 
 object CommandParser {
@@ -36,6 +40,8 @@ object CommandParser {
         if (depth == 0) {
             aliases[text]?.let { return parse(it, emptyMap(), 1) }
         }
+
+        if (text.startsWith("remind me") || text.startsWith("reminder to")) return Command.Remind(raw)
 
         // sms: "text mom saying running late", "send sms to 0801... that i'm here"
         Regex("^(?:send )?(?:an? )?(?:sms|text|message)(?: to)? (.+?) (?:saying|that says|with message|message|that) (.+)$")
