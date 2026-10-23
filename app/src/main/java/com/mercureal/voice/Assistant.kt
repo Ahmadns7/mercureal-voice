@@ -131,7 +131,7 @@ object Assistant {
                 done(Reply("$n apps can open from here. open the Apps tab to browse them alphabetically, or type open then a name."))
             }
             else -> {
-                val cmd = CommandParser.parse(raw, Store.aliases(app))
+                val cmd = CommandParser.parse(raw, Store.aliases(app), language = Store.language(app))
                 when (cmd) {
                     is Command.Unknown -> {
                         // a bare app name that matches exactly opens that app
@@ -160,7 +160,7 @@ object Assistant {
     }
 
     private fun runNow(app: Context, raw: String, done: (Reply) -> Unit) {
-        val cmd = CommandParser.parse(raw, Store.aliases(app))
+        val cmd = CommandParser.parse(raw, Store.aliases(app), language = Store.language(app))
         if (cmd is Command.Screenshot) {
             ScreenshotCapture.capture(app) { ok, msg ->
                 Store.addHistory(app, raw, msg, ok)

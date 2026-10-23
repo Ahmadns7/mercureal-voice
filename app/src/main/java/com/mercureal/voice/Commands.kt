@@ -59,19 +59,27 @@ object CommandParser {
      * Parse spoken or typed text. A user alias (phrase -> command) is applied first,
      * then the built-in grammar. depth stops alias loops.
      */
-    fun parse(raw: String, aliases: Map<String, String> = emptyMap(), depth: Int = 0): Command {
-        val text = raw.lowercase().replace(Regex("\\s+"), " ").trim().trimEnd('.', '!', '?')
-        if (text.isEmpty()) return Command.Unknown(raw)
+    fun parse(
+        raw: String,
+        aliases: Map<String, String> = emptyMap(),
+        depth: Int = 0,
+        language: String = NaijaPhrases.AUTO,
+    ): Command {
+        val base = raw.lowercase().replace(Regex("\\s+"), " ").trim().trimEnd('.', '!', '?')
+        if (base.isEmpty()) return Command.Unknown(raw)
         if (depth == 0) {
-            aliases[text]?.let { return parse(it, emptyMap(), 1) }
+            aliases[base]?.let { return parse(it, emptyMap(), 1, language) }
         }
+        // 1.9.0: Pidgin, Yoruba and Hausa phrases are rewritten to the English command text here.
+        // English input passes through unchanged. See NaijaPhrases.kt.
+        val text = NaijaPhrases.toEnglish(base, language)
 
         if (text == "emergency" || text == "help me" || text == "emergency mode") return Command.Emergency
         if (text == "car mode" || text == "start car mode" || text == "enter car mode") return Command.CarModeOn
         if (text == "exit car mode" || text == "leave car mode" || text == "stop car mode") return Command.CarModeOff
         if (text == "navigate home" || text == "go home" || text == "take me home") return Command.NavigateHome
 
-        if (text.startsWith("remind me") || text.startsWith("reminder to")) return Command.Remind(raw)
+        if (text.startsWith("remind me") || text.startsWith("reminder to")) return Command.Remind(if (text == base) raw else text)
 
         // sms: "text mom saying running late", "send sms to 0801... that i'm here"
         Regex("^(?:send )?(?:an? )?(?:sms|text|message)(?: to)? (.+?) (?:saying|that says|with message|message|that) (.+)$")

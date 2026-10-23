@@ -473,6 +473,27 @@ class MainActivity : Activity() {
             setOnCheckedChangeListener { _, checked -> Store.setContinuous(this@MainActivity, checked) }
         }
         c.addView(sw, lp())
+
+        c.addView(label("Command language (1.9.0)", 13f, muted), lp(14))
+        val langCard = card()
+        val curLang = Store.language(this)
+        langCard.addView(label(
+            "Pidgin, Yoruba and Hausa phrases work for open, call, text, battery, time, flashlight and reminder. Auto tries all of them. Speech out stays English. Recognition depends on your phone's speech service handling accented speech.",
+            12f, muted
+        ), lp(0))
+        val langRows = NaijaPhrases.languages.chunked(3)
+        langRows.forEach { row ->
+            val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            row.forEach { (key, name) ->
+                r.addView(button(if (curLang == key) "$name (on)" else name, primary = curLang == key) {
+                    Store.setLanguage(this@MainActivity, key)
+                    Toast.makeText(this@MainActivity, "command language: $name", Toast.LENGTH_SHORT).show()
+                    showTab("home")
+                }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(3); rightMargin = dp(3) })
+            }
+            langCard.addView(r, lp(4))
+        }
+        c.addView(langCard, lp())
         c.addView(label(
             "Tip: add the Flashlight and Screenshot tiles from your quick settings edit panel.",
             12f, muted

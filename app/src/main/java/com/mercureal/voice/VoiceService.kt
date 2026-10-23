@@ -582,7 +582,7 @@ class VoiceService : Service() {
             val aliases = Store.aliases(app)
             val speaker = Speaker.instance(app)
             if (Sms.answerPending(app, raw, speaker)) return
-            val cmd = CommandParser.parse(raw, aliases)
+            val cmd = CommandParser.parse(raw, aliases, language = Store.language(app))
             if (cmd is Command.Emergency) {
                 EmergencyMode.run(app, speaker)
                 return
@@ -627,7 +627,7 @@ class VoiceService : Service() {
                     Store.addHistory(app, raw, "ran ${routine.name}: ${steps.size} steps", true)
                     return
                 }
-                val cmd = CommandParser.parse(steps[i], Store.aliases(app))
+                val cmd = CommandParser.parse(steps[i], Store.aliases(app), language = Store.language(app))
                 val result = Actions.run(app, cmd)
                 speaker.say(result.speech) { handler.postDelayed({ next(i + 1) }, 250) }
             }

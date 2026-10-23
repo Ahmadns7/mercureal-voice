@@ -20,6 +20,7 @@ object Store {
     private const val KEY_THEME = "theme"
     private const val KEY_ACCENT = "accent"
     private const val KEY_ICON = "icon"
+    private const val KEY_LANG = "command_language"
     private const val MAX_HISTORY = 100
     private const val MAX_CHAT = 200
 
@@ -72,6 +73,17 @@ object Store {
     fun setWakePhrase(ctx: Context, phrase: String) {
         val clean = phrase.trim().lowercase().take(40)
         prefs(ctx).edit().putString(KEY_WAKE_PHRASE, clean.ifBlank { Wake.DEFAULT_PHRASE }).apply()
+    }
+
+    // ---- command language (1.9.0): auto, en, pcm, yo, ha. Auto tries every language's phrases. ----
+
+    fun language(ctx: Context): String {
+        val v = prefs(ctx).getString(KEY_LANG, NaijaPhrases.AUTO) ?: NaijaPhrases.AUTO
+        return if (NaijaPhrases.languages.any { it.first == v }) v else NaijaPhrases.AUTO
+    }
+
+    fun setLanguage(ctx: Context, value: String) {
+        prefs(ctx).edit().putString(KEY_LANG, if (NaijaPhrases.languages.any { it.first == value }) value else NaijaPhrases.AUTO).apply()
     }
 
     // ---- theme and icon (1.6.0) ----

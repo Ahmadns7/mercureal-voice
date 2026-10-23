@@ -1,8 +1,10 @@
 # MercuReal Voice
 
+[![Latest release](https://img.shields.io/github/v/release/Ahmadns7/mercureal-voice?label=download%20APK&color=10b981)](https://github.com/Ahmadns7/mercureal-voice/releases/latest)
+
 Offline-first voice control for Android. Speak a command, the phone does it. Nothing is uploaded. All history, aliases and settings live on the device (SharedPreferences).
 
-Package: com.mercureal.voice · versionName 1.8.0 (versionCode 11) · minSdk 26 · targetSdk 35
+Package: com.mercureal.voice · versionName 1.9.0 (versionCode 12) · minSdk 26 · targetSdk 35
 
 ## Features
 
@@ -23,6 +25,15 @@ Package: com.mercureal.voice · versionName 1.8.0 (versionCode 11) · minSdk 26 
 - Screen reader (new in 1.5.0): say "read screen" to speak the text of the active window. The accessibility service walks the window tree, keeps visible text and content descriptions, and reads it in pages of about 1200 characters, starting the next page when the previous one finishes speaking. Say "stop reading" to interrupt. Off until you enable it in Accessibility settings (home tab row opens them). It reads only on request and does not act on the screen or log what it reads.
 - App usage stats (new in 1.5.0): "how much time on whatsapp today" or "yesterday" answers from UsageStatsManager foreground time, with fuzzy app-name matching shared with "open". "screen time" or "top apps" speaks the top five apps. The Usage tab shows the top five apps today with time bars. Needs usage access (special permission, granted in settings).
 - Reminders (new in 1.2.0): "remind me to X at 6pm", "remind me to X tomorrow at 9", or "remind me to X in 20 minutes". Stored on-device, fired by an exact alarm with a spoken announcement and notification. Reminders are re-armed after reboot.
+
+## Languages (new in 1.9.0)
+
+Commands are matched on recognized text. The Home tab has a "Command language" setting: auto (default, tries all languages), English, Nigerian Pidgin, Yoruba, or Hausa. The matcher covers 43 phrasings across open, call, text, battery, time, flashlight and reminder (Pidgin 20, Yoruba 11, Hausa 12). English always works. Examples: "open whatsapp", "make i call mama", "how battery dey", "shine light", "aago melo ni", "kunna fitila", "karfe nawa ne".
+
+Honest limits:
+- Recognition depends on the phone's speech service (Google by default). If it does not transcribe accented Pidgin, Yoruba or Hausa speech correctly, the matcher gets the wrong text and cannot fix it. Try the language setting that matches how you speak.
+- Replies are spoken in English in 1.9.0. Only the command phrases are multilingual.
+- The phrase tables are a starting set, not full grammars. Phrases outside the table are handled by the English grammar as before.
 
 ## Feature table (1.8.0)
 
@@ -96,7 +107,7 @@ Raw toolchain (no Gradle, used for release builds). Needs JDK 17+, Android SDK w
     export KOTLINC_HOME=/path/to/kotlinc
     bash scripts/build-raw.sh
 
-Output: dist/raw/mercureal-voice-1.8.0-debug.apk (includes the arm64 native library; the llama.cpp bridge is built separately, see native/) (signed with the debug key, v2 and v3 schemes).
+Output: dist/raw/mercureal-voice-1.9.0-debug.apk by default (debug key, v2 and v3 schemes). Set MERCUREAL_KEYSTORE (plus MERCUREAL_KEY_ALIAS, MERCUREAL_STORE_PASS, MERCUREAL_KEY_PASS) to get a release-signed APK and an AAB. Keystore setup and the Play and F-Droid steps are in RELEASING.md. The build gate runs the Naija phrase unit test first. The llama.cpp bridge is built separately, see native/.
 
 ## Caveats
 
