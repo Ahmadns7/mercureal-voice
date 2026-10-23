@@ -44,14 +44,25 @@ class VoiceService : Service() {
         super.onCreate()
         instance = this
         continuous = Store.continuous(this)
-        createChannel()
-        val notif = buildNotification("Ready. Tap the mic or say a command.")
-        if (Build.VERSION.SDK_INT >= 29) {
-            startForeground(NOTIF_ID, notif, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
-        } else {
-            startForeground(NOTIF_ID, notif)
+        try {
+            createChannel()
+            val notif = buildNotification("Ready. Tap the mic or say a command.")
+            if (Build.VERSION.SDK_INT >= 29) {
+                startForeground(NOTIF_ID, notif, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            } else {
+                startForeground(NOTIF_ID, notif)
+            }
+        } catch (e: Throwable) {
+            // Android refused the foreground start (missing mic permission or background start limits).
+            CrashReport.report(this, "voice service start", e)
+            stopSelf()
+            return
         }
-        if (Settings.canDrawOverlays(this)) showOverlay()
+        try {
+            if (Settings.canDrawOverlays(this)) showOverlay()
+        } catch (e: SecurityException) {
+            android.util.Log.w("MercuReal", "overlay permission refused", e)
+        }
         startListening()
     }
 
@@ -222,8 +233,13 @@ class VoiceService : Service() {
         try {
             wm?.addView(btn, lp)
             overlay = btn
-        } catch (e: Exception) {
-            // Overlay permission was revoked after the service started.
+        } catch (e: SecurityException) {
+            // SYSTEM_ALERT_WINDOW was revoked or never granted. Voice still works without the bubble.
+            android.util.Log.w("MercuReal", "overlay permission refused", e)
+        } catch (e: android.view.WindowManager.BadTokenException) {
+            android.util.Log.w("MercuReal", "overlay window token rejected", e)
+        } catch (e: RuntimeException) {
+            android.util.Log.w("MercuReal", "overlay could not be added", e)
         }
     }
 

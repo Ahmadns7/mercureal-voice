@@ -13,8 +13,13 @@ import android.os.Bundle
 class ProjectionRequestActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val mpm = getSystemService(MediaProjectionManager::class.java)
-        startActivityForResult(mpm.createScreenCaptureIntent(), REQ)
+        try {
+            val mpm = getSystemService(MediaProjectionManager::class.java)
+            startActivityForResult(mpm.createScreenCaptureIntent(), REQ)
+        } catch (e: Throwable) {
+            CrashReport.report(this, "screenshot permission", e)
+            finish()
+        }
     }
 
     @Deprecated("Deprecated in Java")

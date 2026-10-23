@@ -2,7 +2,7 @@
 
 Offline-first voice control for Android. Speak a command, the phone does it. Nothing is uploaded. All history, aliases and settings live on the device (SharedPreferences).
 
-Package: com.mercureal.voice · versionName 1.0.0 · minSdk 26 · targetSdk 35
+Package: com.mercureal.voice · versionName 1.0.1 · minSdk 26 · targetSdk 35
 
 ## Features
 

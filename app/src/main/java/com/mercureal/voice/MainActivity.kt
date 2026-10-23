@@ -36,19 +36,46 @@ class MainActivity : Activity() {
     private val text = Color.parseColor("#E8F5F0")
     private val muted = Color.parseColor("#7C9A90")
     private val emerald = Color.parseColor("#10B981")
-    private val body = LinearLayout(this)
+    // Not created in a field initializer: views need a Context, and fields run before the
+    // Activity is attached (v1.0.0 crashed on open because of this).
+    private lateinit var body: LinearLayout
     private var tab = "home"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = bg
-        window.navigationBarColor = bg
-        if (!Store.isOnboarded(this)) showOnboarding() else showTab("home")
+        try {
+            body = LinearLayout(this)
+            window.statusBarColor = bg
+            window.navigationBarColor = bg
+            if (!Store.isOnboarded(this)) showOnboarding() else showTab("home")
+        } catch (e: Throwable) {
+            CrashReport.report(this, "screen start", e)
+            showFallback(e)
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        if (Store.isOnboarded(this)) showTab(tab)
+        if (!::body.isInitialized) return
+        try {
+            if (Store.isOnboarded(this)) showTab(tab)
+        } catch (e: Throwable) {
+            CrashReport.report(this, "screen refresh", e)
+        }
+    }
+
+    /** Plain fallback screen so a failed UI build still shows the reason. */
+    private fun showFallback(e: Throwable) {
+        try {
+            setContentView(TextView(this).apply {
+                setBackgroundColor(bg)
+                setTextColor(this@MainActivity.text)
+                setPadding(dp(18), dp(18), dp(18), dp(18))
+                text = "MercuReal Voice hit an error starting the screen:\n${e.javaClass.simpleName}: ${e.message}\n\nSend this to the developer."
+            })
+        } catch (_: Throwable) {
+            // Nothing else we can do; CrashReport already logged it.
+        }
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
