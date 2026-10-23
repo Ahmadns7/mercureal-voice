@@ -22,6 +22,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.GridLayout
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
@@ -48,6 +49,11 @@ class MainActivity : Activity() {
     // Activity is attached (v1.0.0 crashed on open because of this).
     private lateinit var body: LinearLayout
     private var tab = "home"
+    // live brain-download progress widgets, rebuilt whenever the chat tab renders
+    private var brainBar: ProgressBar? = null
+    private var brainLabel: TextView? = null
+    private var brainLastUi = 0L
+    private var brainActive = false
     private var tourPage = 0
     private var appQuery = ""
     private var pendingBackupJson: String? = null
@@ -525,7 +531,9 @@ class MainActivity : Activity() {
             else -> "Smart mode needs the brain (about 105 MB, one time, download on this phone). Until then it uses rules."
         }
         b.addView(label(brainNote, 11f, muted), lp(2))
-        if (!Llm.ready(this) && Llm.ramMb(this) >= Llm.MIN_RAM_MB) {
+        if (brainActive || Llm.isDownloading()) {
+            b.addView(brainProgressRow(), lp(2))
+        } else if (!Llm.ready(this) && Llm.ramMb(this) >= Llm.MIN_RAM_MB) {
             b.addView(button("Download brain (105 MB)", primary = false) { confirmBrainDownload() }.apply { layoutParams = lp(2) })
         } else if (Llm.ready(this)) {
             b.addView(button("Delete brain", primary = false) { Llm.deleteModel(this); showTab("chat") }.apply { layoutParams = lp(2) })
@@ -564,16 +572,41 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private fun brainProgressRow(): LinearLayout {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val total = Llm.MODEL_BYTES
+        val status = label("downloading the brain: starting...", 12f, muted)
+        val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 0
+        }
+        box.addView(status, lp(2))
+        box.addView(bar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        box.addView(button("Cancel download", primary = false) { Llm.cancelDownload(); status.text = "cancelling..." }.apply { layoutParams = lp(2) })
+        brainLabel = status
+        brainBar = bar
+        return box
+    }
+
     private fun startBrainDownload() {
-        val status = label("downloading the brain...", 12f, muted)
-        Toast.makeText(this, "downloading the brain, check the chat tab", Toast.LENGTH_SHORT).show()
+        brainLastUi = 0L
+        brainActive = true
+        Toast.makeText(this, "downloading the brain, progress is on the Assistant tab", Toast.LENGTH_SHORT).show()
+        showTab("chat")
         Thread({
             val result = Llm.download(this) { got, total ->
-                if (got % (5L * 1024 * 1024) < 64 * 1024) {
-                    runOnUiThread { status.text = "downloading the brain: ${got / 1_048_576} of ${total / 1_048_576} MB" }
+                // throttle UI updates to every 256 KB (and the final chunk)
+                if (got - brainLastUi >= 256L * 1024 || got >= total) {
+                    brainLastUi = got
+                    runOnUiThread {
+                        val pct = (got * 100 / total.coerceAtLeast(1)).toInt().coerceIn(0, 100)
+                        brainBar?.progress = pct
+                        brainLabel?.text = "downloading the brain: $pct% (${got / 1_048_576} of ${total / 1_048_576} MB)"
+                    }
                 }
             }
             runOnUiThread {
+                brainActive = false
                 result.onSuccess { Toast.makeText(this, "brain ready", Toast.LENGTH_SHORT).show() }
                     .onFailure { Toast.makeText(this, it.message ?: "download failed", Toast.LENGTH_LONG).show() }
                 if (tab == "chat") showTab("chat")

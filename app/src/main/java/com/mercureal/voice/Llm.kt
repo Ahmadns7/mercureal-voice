@@ -64,38 +64,62 @@ object Llm {
         else -> null
     }
 
+    private val downloading = AtomicBoolean(false)
+    private val cancelRequested = AtomicBoolean(false)
+
+    /** True while a model download is running (one at a time). */
+    fun isDownloading(): Boolean = downloading.get()
+
+    /** Asks the running download to stop. It deletes the partial file and returns a failure. */
+    fun cancelDownload() { cancelRequested.set(true) }
+
     /**
      * Downloads the model to a .part file, verifies SHA-256, then renames it into place.
      * [progress] receives (bytesSoFar, totalBytes). Runs on the calling thread.
+     * Only one download runs at a time; a failed or cancelled download leaves no .part file.
      */
-    fun download(ctx: Context, progress: (Long, Long) -> Unit): Result<Unit> = runCatching {
+    fun download(ctx: Context, progress: (Long, Long) -> Unit): Result<Unit> {
+        if (!downloading.compareAndSet(false, true)) {
+            return Result.failure(IllegalStateException("the brain is already downloading"))
+        }
+        cancelRequested.set(false)
         val out = File(dir(ctx), "$MODEL_NAME.part")
-        val conn = (URL(MODEL_URL).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15_000; readTimeout = 30_000; instanceFollowRedirects = true
-        }
-        conn.inputStream.use { input ->
-            FileOutputStream(out).use { fos ->
-                val buf = ByteArray(64 * 1024)
-                var total = 0L
-                while (true) {
-                    val n = input.read(buf)
-                    if (n < 0) break
-                    fos.write(buf, 0, n)
-                    total += n
-                    progress(total, MODEL_BYTES)
-                }
+        return runCatching {
+            val conn = (URL(MODEL_URL).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 15_000; readTimeout = 30_000; instanceFollowRedirects = true
             }
+            try {
+                conn.inputStream.use { input ->
+                    FileOutputStream(out).use { fos ->
+                        val buf = ByteArray(64 * 1024)
+                        var total = 0L
+                        while (true) {
+                            if (cancelRequested.get()) throw java.io.IOException("download cancelled")
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            fos.write(buf, 0, n)
+                            total += n
+                            progress(total, MODEL_BYTES)
+                        }
+                    }
+                }
+            } finally {
+                conn.disconnect()
+            }
+            val digest = MessageDigest.getInstance("SHA-256")
+            out.inputStream().use { s ->
+                val b = ByteArray(64 * 1024)
+                while (true) { val n = s.read(b); if (n < 0) break; digest.update(b, 0, n) }
+            }
+            val hex = digest.digest().joinToString("") { "%02x".format(it) }
+            check(hex == MODEL_SHA256) { "download failed the checksum, try again" }
+            val dest = modelFile(ctx)
+            dest.delete()
+            check(out.renameTo(dest)) { "could not save the model" }
+        }.also { result ->
+            downloading.set(false)
+            if (result.isFailure) out.delete()
         }
-        val digest = MessageDigest.getInstance("SHA-256")
-        out.inputStream().use { s ->
-            val b = ByteArray(64 * 1024)
-            while (true) { val n = s.read(b); if (n < 0) break; digest.update(b, 0, n) }
-        }
-        val hex = digest.digest().joinToString("") { "%02x".format(it) }
-        check(hex == MODEL_SHA256) { "download failed the checksum, try again" }
-        val dest = modelFile(ctx)
-        dest.delete()
-        check(out.renameTo(dest)) { "could not save the model" }
     }
 
     fun deleteModel(ctx: Context) {
