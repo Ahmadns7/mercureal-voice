@@ -332,8 +332,13 @@ class VoiceService : Service() {
         fun execute(ctx: Context, raw: String, source: String = "typed") {
             val app = ctx.applicationContext
             val aliases = Store.aliases(app)
-            val cmd = CommandParser.parse(raw, aliases)
             val speaker = Speaker.instance(app)
+            if (Sms.answerPending(app, raw, speaker)) return
+            val cmd = CommandParser.parse(raw, aliases)
+            if (cmd is Command.Emergency) {
+                EmergencyMode.run(app, speaker)
+                return
+            }
             if (cmd is Command.Screenshot) {
                 ScreenshotCapture.capture(app) { ok, msg ->
                     Store.addHistory(app, raw, msg, ok)

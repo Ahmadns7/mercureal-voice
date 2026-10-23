@@ -237,6 +237,14 @@ class MainActivity : Activity() {
         perms.addView(permRow("Phone calls", Manifest.permission.CALL_PHONE))
         perms.addView(permRow("Contacts", Manifest.permission.READ_CONTACTS))
         perms.addView(permRow("Camera (flashlight)", Manifest.permission.CAMERA))
+        perms.addView(permRow("Send texts (SMS)", Manifest.permission.SEND_SMS))
+        perms.addView(permRow("Location (emergency)", Manifest.permission.ACCESS_FINE_LOCATION))
+        perms.addView(button("Grant text and location access", primary = false) {
+            requestPermissions(
+                arrayOf(Manifest.permission.SEND_SMS, Manifest.permission.ACCESS_FINE_LOCATION),
+                REQ_PERMS
+            )
+        }.apply { layoutParams = lp(8) })
         perms.addView(label(
             "Overlay (floating mic): " + if (Settings.canDrawOverlays(this)) "on" else "off",
             14f, text
@@ -249,6 +257,43 @@ class MainActivity : Activity() {
             showTour()
         }.apply { layoutParams = lp(6) })
         c.addView(perms, lp())
+
+        c.addView(label("Emergency", 13f, muted), lp(14))
+        val em = card()
+        em.addView(label("Say \"emergency\" or \"help me\" to text your location to this contact.", 12f, muted))
+        val nameField = field("contact name").apply { setText(SmsPrefs.emergencyName(this@MainActivity) ?: "") }
+        val numField = field("phone number, e.g. +234...").apply {
+            inputType = InputType.TYPE_CLASS_PHONE
+            setText(SmsPrefs.emergencyNumber(this@MainActivity) ?: "")
+        }
+        val msgField = field("message (optional), e.g. i need help").apply {
+            setText(SmsPrefs.emergencyMessage(this@MainActivity))
+        }
+        em.addView(nameField, lp(8))
+        em.addView(numField, lp(6))
+        em.addView(msgField, lp(6))
+        val panicSwitch = Switch(this).apply {
+            text = "Panic mode: send without asking for yes"
+            setTextColor(this@MainActivity.text)
+            isChecked = SmsPrefs.panic(this@MainActivity)
+        }
+        em.addView(panicSwitch, lp(8))
+        em.addView(button("Save emergency contact", primary = true) {
+            val n = nameField.text.toString().trim()
+            val num = numField.text.toString().trim()
+            if (n.isEmpty() || num.count { it.isDigit() } < 3) {
+                android.widget.Toast.makeText(this, "add a name and a phone number", android.widget.Toast.LENGTH_SHORT).show()
+            } else {
+                SmsPrefs.saveEmergency(this, n, num, msgField.text.toString().trim(), panicSwitch.isChecked)
+                android.widget.Toast.makeText(this, "emergency contact saved", android.widget.Toast.LENGTH_SHORT).show()
+                showTab("home")
+            }
+        }.apply { layoutParams = lp(8) })
+        em.addView(label(
+            "Panic mode sends right away with no confirmation. Off: you hear the text and say yes first.",
+            12f, muted
+        ), lp(6))
+        c.addView(em, lp())
 
         c.addView(label("Notifications", 13f, muted), lp(14))
         val notif = card()

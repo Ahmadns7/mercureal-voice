@@ -23,6 +23,8 @@ sealed class Command {
     data class Remind(val raw: String) : Command()
     /** Media transport: op = "play", "pause", "next", "previous", or "now" (what's playing). */
     data class Media(val op: String) : Command()
+    /** Emergency mode: location + maps link texted to the saved emergency contact. */
+    object Emergency : Command()
 }
 
 object CommandParser {
@@ -51,6 +53,8 @@ object CommandParser {
         if (depth == 0) {
             aliases[text]?.let { return parse(it, emptyMap(), 1) }
         }
+
+        if (text == "emergency" || text == "help me" || text == "emergency mode") return Command.Emergency
 
         if (text.startsWith("remind me") || text.startsWith("reminder to")) return Command.Remind(raw)
 

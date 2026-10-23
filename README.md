@@ -2,7 +2,7 @@
 
 Offline-first voice control for Android. Speak a command, the phone does it. Nothing is uploaded. All history, aliases and settings live on the device (SharedPreferences).
 
-Package: com.mercureal.voice · versionName 1.3.0 (versionCode 5) · minSdk 26 · targetSdk 35
+Package: com.mercureal.voice · versionName 1.4.0 (versionCode 6) · minSdk 26 · targetSdk 35
 
 ## Features
 
@@ -18,9 +18,11 @@ Package: com.mercureal.voice · versionName 1.3.0 (versionCode 5) · minSdk 26 �
 - Routines (new in 1.2.0): a spoken phrase runs a chain of commands in order, waiting for each step's speech before the next. Two examples ship ("good morning", "wind down"). Edit or add routines in the app.
 - Media control (new in 1.3.0): "play", "pause", "next", "previous", and "what's playing". With notification access, controls go to the active music session and "what's playing" reads the title and artist. Without it, play/pause/next/previous send the media key instead. Volume is adjusted through AudioManager. With no active session, it says so instead of failing silently.
 - Notification reading (new in 1.3.0): incoming notifications are read aloud as "app. title. preview". Off by default. Master toggle and a per-app mute list live on the Home tab. Skipped during do not disturb, on silent or vibrate, for ongoing, transport and progress notifications, for group summaries, and for repeats within 10 seconds. Speech is on-device TTS. Nothing is sent anywhere.
+- SMS sending (new in 1.4.0): "text <contact> <message>" finds the contact, reads back the recipient and message, and waits for "yes" (or "no") within 60 seconds before sending through SmsManager. The carrier result is announced by voice. If SEND_SMS is denied, it opens the default messaging app composer with the text filled in instead.
+- Emergency mode (new in 1.4.0): save an emergency contact and an optional message on the Home tab. Saying "emergency" or "help me" takes one location fix (last fresh fix, else a single fix with a 15 second timeout), builds a maps.google.com link, and texts it to the contact. It asks for "yes" first unless Panic mode is on, in which case it sends right away. Location needs ACCESS_FINE_LOCATION. Without it, the text goes out saying location is unavailable.
 - Reminders (new in 1.2.0): "remind me to X at 6pm", "remind me to X tomorrow at 9", or "remind me to X in 20 minutes". Stored on-device, fired by an exact alarm with a spoken announcement and notification. Reminders are re-armed after reboot.
 
-## Feature table (1.3.0)
+## Feature table (1.4.0)
 
 | Feature | Version | Needs |
 | --- | --- | --- |
@@ -28,14 +30,18 @@ Package: com.mercureal.voice · versionName 1.3.0 (versionCode 5) · minSdk 26 �
 | Reminders (exact alarm, reboot re-arm) | 1.2.0 | exact alarm permission |
 | Media control: play, pause, next, previous, what's playing, volume | 1.3.0 | notification access for session control and "what's playing"; play/pause/next/previous work without it via media key |
 | Notification reading (master toggle, per-app mute, DND and silent aware) | 1.3.0 | notification access |
+| SMS sending with spoken read-back and yes/no confirmation | 1.4.0 | SEND_SMS (runtime); falls back to the messaging app composer if denied |
+| Emergency mode: location + maps link texted to saved contact, panic mode | 1.4.0 | SEND_SMS and ACCESS_FINE_LOCATION (runtime); location is optional, the text still goes out without it |
 
-Deferred (not in 1.3.0): wake word, SMS send, screen reader, emergency mode, usage stats, themes and icon packs.
+Deferred (not in 1.4.0): wake word, screen reader, usage stats, themes and icon packs.
 
 ## Permissions
 
 - RECORD_AUDIO: speech recognition (requested at runtime).
 - CALL_PHONE: place calls (runtime).
 - READ_CONTACTS: find contacts by name (runtime).
+- SEND_SMS: send texts through SmsManager for "text" and emergency mode (runtime, added in 1.4.0). Denied means the app opens the messaging composer instead.
+- ACCESS_FINE_LOCATION: one-shot location for emergency mode (runtime, added in 1.4.0). ACCESS_COARSE_LOCATION is declared alongside it.
 - CAMERA: flashlight through CameraManager (runtime).
 - FOREGROUND_SERVICE, FOREGROUND_SERVICE_MICROPHONE, FOREGROUND_SERVICE_MEDIA_PROJECTION: keep listening and capture screens while the app is in the background.
 - SYSTEM_ALERT_WINDOW: floating mic overlay (granted in system settings).
@@ -62,17 +68,17 @@ Gradle project (for Android Studio or CI):
 
     ./gradlew assembleDebug
 
-Raw toolchain (no Gradle, used for the v1.0.0 APK). Needs JDK 17+, Android SDK with platform android-35 and build-tools 35.0.0, and a kotlinc 2.0.x distribution:
+Raw toolchain (no Gradle, used for release builds). Needs JDK 17+, Android SDK with platform android-35 and build-tools 35.0.0, and a kotlinc 2.0.x distribution:
 
     export ANDROID_HOME=/path/to/sdk
     export KOTLINC_HOME=/path/to/kotlinc
     bash scripts/build-raw.sh
 
-Output: dist/raw/mercureal-voice-1.0.0-debug.apk (signed with the debug key, v2 and v3 schemes).
+Output: dist/raw/mercureal-voice-1.4.0-debug.apk (signed with the debug key, v2 and v3 schemes).
 
 ## Caveats
 
-- v1.0.0 has not been tested on a physical device. Expect rough edges around overlay behaviour, screen capture on some vendor ROMs, and offline speech model availability (offline recognition needs the language pack downloaded in Google's speech settings).
+- Not yet tested on a physical device. SMS and location paths are compile-verified only: carrier delivery reports and GPS fixes need a real phone with a SIM. Expect rough edges around overlay behaviour, screen capture on some vendor ROMs, and offline speech model availability (offline recognition needs the language pack downloaded in Google's speech settings).
 - Debug-signed only. Not for the Play Store.
 - Volume control uses AudioManager. It does not need accessibility access.
 - Design follows the MercuReal palette using framework Views. Material3 components are not used.

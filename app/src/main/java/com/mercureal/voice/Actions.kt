@@ -29,7 +29,7 @@ object Actions {
         is Command.OpenApp -> openApp(ctx, cmd.query)
         is Command.Call -> callTarget(ctx, cmd.target)
         is Command.Dial -> dial(ctx, cmd.number)
-        is Command.Sms -> sms(ctx, cmd.recipient, cmd.body)
+        is Command.Sms -> Sms.begin(ctx, cmd.recipient, cmd.body)
         is Command.Flashlight -> flashlight(ctx, cmd.on)
         is Command.Timer -> timer(ctx, cmd.seconds)
         is Command.Alarm -> alarm(ctx, cmd.hour, cmd.minute)
@@ -42,6 +42,7 @@ object Actions {
         is Command.RunRoutine -> Result(true, "running ${cmd.name}")
         is Command.Remind -> remind(ctx, cmd.raw)
         is Command.Media -> MediaControl.run(ctx, cmd.op)
+        is Command.Emergency -> Result(true, "emergency")
     }
 
     fun remind(ctx: Context, raw: String): Result {
