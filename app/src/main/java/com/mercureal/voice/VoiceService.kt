@@ -12,6 +12,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
+import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -52,7 +53,20 @@ class VoiceService : Service() {
     private var recognizerErrors = 0
     private var statusText = READY_TEXT
 
+    // Auto listen silence tracking. idleSince = last speech (or the tap that started listening).
+    private var idleSince = System.currentTimeMillis()
+    private var speechActive = false
+    // True for a pass the user started by tapping the mic. Passes re-armed by the loop are auto listen.
+    private var tapPass = false
+
     private val windowEnd = Runnable { endWindow() }
+
+    /** Auto listen: stops the loop when no speech has started for [AUTO_SILENCE_STOP_MS]. */
+    private val silenceStop = Runnable {
+        if (!listening || speechActive) return@Runnable
+        val idle = System.currentTimeMillis() - idleSince
+        if (idle >= AUTO_SILENCE_STOP_MS) stopAutoListen(AUTO_STOPPED_TEXT) else scheduleSilenceCheck(AUTO_SILENCE_STOP_MS - idle)
+    }
     private val nextWindow = Runnable { wakeTick() }
     private val wakeFallback = Runnable {
         if (wakeState == WakeState.WAKE_HEARD) {
@@ -273,23 +287,92 @@ class VoiceService : Service() {
             return
         }
         if (listening) return
+        idleSince = System.currentTimeMillis()
+        tapPass = true
+        beginPass()
+    }
+
+    /**
+     * Starts one auto listen pass. Yields to our own TTS, releases the loop when another app is
+     * recording, and stops after [AUTO_SILENCE_STOP_MS] with no speech.
+     */
+    private fun beginPass() {
+        if (listening) return
+        val rec = recognizer ?: return
+        if (continuous && Speaker.instance(this).isSpeaking) {
+            // Our own reply is playing: don't listen to it, and don't count it as silence.
+            idleSince = System.currentTimeMillis()
+            main.postDelayed({ beginPass() }, 500)
+            return
+        }
+        if (foreignMicActive()) {
+            // Another app holds the mic: stay idle and check again shortly. Our own recognizer is idle here.
+            idleSince = System.currentTimeMillis()
+            setStatus(AUTO_FOREIGN_MIC_TEXT)
+            main.postDelayed({ beginPass() }, FOREIGN_MIC_RECHECK_MS)
+            return
+        }
+        val remaining = AUTO_SILENCE_STOP_MS - (System.currentTimeMillis() - idleSince)
+        if (remaining <= 0) {
+            stopAutoListen(AUTO_STOPPED_TEXT)
+            return
+        }
         listening = true
+        speechActive = false
         setOverlayState(true)
+        scheduleSilenceCheck(remaining)
         main.post { rec.startListening(recognizerIntent()) }
+    }
+
+    private fun scheduleSilenceCheck(delayMs: Long) {
+        main.removeCallbacks(silenceStop)
+        main.postDelayed(silenceStop, delayMs.coerceAtLeast(0L))
+    }
+
+    /** Ends the auto listen loop without re-arming. A tap on the mic starts it again. */
+    private fun stopAutoListen(status: String) {
+        main.removeCallbacks(silenceStop)
+        listening = false
+        speechActive = false
+        recognizer?.cancel()
+        setOverlayState(false)
+        setStatus(status)
+    }
+
+    /**
+     * True when any app has an active microphone session. Only call this while our recognizer is
+     * idle, because the speech service records on our behalf while a pass runs. Android 10 (API 29)
+     * and up only; older phones can't report it, so auto listen behaves as before there.
+     */
+    private fun foreignMicActive(): Boolean {
+        if (Build.VERSION.SDK_INT < 29) return false
+        return try {
+            getSystemService(AudioManager::class.java).activeRecordingConfigurations.isNotEmpty()
+        } catch (e: SecurityException) {
+            false
+        }
     }
 
     private fun stopListeningPass() {
         listening = false
+        main.removeCallbacks(silenceStop)
         setOverlayState(false)
         recognizer?.cancel()
     }
 
     private val listener = object : RecognitionListener {
         override fun onReadyForSpeech(params: android.os.Bundle?) {}
-        override fun onBeginningOfSpeech() {}
+        override fun onBeginningOfSpeech() {
+            speechActive = true
+            idleSince = System.currentTimeMillis()
+            main.removeCallbacks(silenceStop)
+        }
         override fun onRmsChanged(rmsdB: Float) {}
         override fun onBufferReceived(buffer: ByteArray?) {}
-        override fun onEndOfSpeech() {}
+        override fun onEndOfSpeech() {
+            speechActive = false
+            idleSince = System.currentTimeMillis()
+        }
 
         override fun onPartialResults(partialResults: android.os.Bundle?) {
             if (!wakeMode || wakeState != WakeState.WINDOW) return
@@ -318,7 +401,13 @@ class VoiceService : Service() {
                 return
             }
             listening = false
-            if (!text.isNullOrBlank()) execute(this@VoiceService, text, "voice")
+            speechActive = false
+            main.removeCallbacks(silenceStop)
+            if (!text.isNullOrBlank()) {
+                idleSince = System.currentTimeMillis()
+                // Auto listen never brings MercuReal's own screens forward. Only the wake word can.
+                execute(this@VoiceService, text, if (tapPass) "voice" else SOURCE_AUTO)
+            }
             rearmIfContinuous()
         }
 
@@ -328,6 +417,8 @@ class VoiceService : Service() {
                 return
             }
             listening = false
+            speechActive = false
+            main.removeCallbacks(silenceStop)
             setOverlayState(false)
             // 7 = no match, 6 = no speech: normal when continuous, so re-arm quietly.
             if (error != SpeechRecognizer.ERROR_NO_MATCH && error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
@@ -340,7 +431,7 @@ class VoiceService : Service() {
     }
 
     private fun rearmIfContinuous() {
-        if (continuous) main.postDelayed({ startListening() }, 600)
+        if (continuous) main.postDelayed({ tapPass = false; beginPass() }, 600)
     }
 
     // ---------- wake word duty cycle ----------
@@ -357,6 +448,13 @@ class VoiceService : Service() {
         val rec = ensureRecognizer() ?: run {
             wakeState = WakeState.PAUSE
             setStatus("Wake word can't run: this phone has no speech recognition")
+            return
+        }
+        if (foreignMicActive()) {
+            // Another app is recording: release the mic and check again later.
+            wakeState = WakeState.PAUSE
+            setStatus("Wake word paused: another app is using the microphone")
+            scheduleNext(Wake.RECHECK_MS)
             return
         }
         Wake.suspendReason(this)?.let { reason ->
@@ -552,6 +650,13 @@ class VoiceService : Service() {
         const val ACTION_PROJECTION = "projection"
         const val ACTION_RELOAD = "reload"
         const val READY_TEXT = "Ready. Tap the mic or say a command."
+        /** Auto listen stop after this long with no speech. Separate from the wake word window. */
+        const val AUTO_SILENCE_STOP_MS = 6_000L
+        const val AUTO_STOPPED_TEXT = "Auto listen stopped after 6 seconds with no speech. Tap the mic to listen again."
+        const val AUTO_FOREIGN_MIC_TEXT = "Auto listen paused: another app is using the microphone. Tap the mic to resume."
+        /** Source tag for commands spoken during auto listen (no wake word). */
+        const val SOURCE_AUTO = "auto"
+        const val FOREIGN_MIC_RECHECK_MS = 2_000L
         const val EMERALD = 0xFF10B981.toInt()
 
         @Volatile var instance: VoiceService? = null
@@ -587,11 +692,16 @@ class VoiceService : Service() {
                 EmergencyMode.run(app, speaker)
                 return
             }
+            if (source == SOURCE_AUTO && (cmd is Command.CarModeOn || cmd is Command.OpenApp)) {
+                // Screens and other apps only come forward after the wake word.
+                speaker.say("say the wake word first")
+                return
+            }
             if (cmd is Command.Screenshot) {
                 ScreenshotCapture.capture(app) { ok, msg ->
                     Store.addHistory(app, raw, msg, ok)
                     speaker.say(msg)
-                    if (!ok && !ScreenshotCapture.hasGrant()) {
+                    if (!ok && !ScreenshotCapture.hasGrant() && source != SOURCE_AUTO) {
                         ProjectionRequestActivity.launch(app)
                     }
                 }
