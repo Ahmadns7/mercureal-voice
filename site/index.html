@@ -2,20 +2,23 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#04100c">
 <title>MercuReal Voice, your phone, offline, by voice</title>
 <meta name="description" content="MercuReal Voice runs on your phone, offline, by voice. Calls, texts, reminders, media, screen reading and an on-device assistant. Nothing leaves the phone except the SMS and calls you trigger.">
 <link rel="stylesheet" href="styles.css">
+<script src="script.js" defer></script>
 </head>
 <body>
 <div class="bg" aria-hidden="true"><span></span><span></span><span></span></div>
-<header class="top glass">
+
+<header class="top glass" id="topbar">
   <a class="brand" href="#top">MercuReal <b>Voice</b></a>
   <a class="btn btn-sm" href="https://github.com/Ahmadns7/mercureal-voice/releases/latest">Download</a>
 </header>
 
 <main id="top">
-<section class="hero glass">
+<section class="hero glass reveal">
   <p class="eyebrow">Android · v2.0.0 · Naija languages</p>
   <h1>MercuReal Voice, your phone, offline, by voice</h1>
   <p class="lead">Call, text, set reminders, control music, read the screen and ask questions. Speak, and the phone does it. Works without internet for the core features.</p>
@@ -26,7 +29,7 @@
   <p class="fine">Latest release on GitHub. Android 8.0 and up.</p>
 </section>
 
-<section class="glass">
+<section class="glass reveal">
   <h2>Features</h2>
   <div class="grid">
     <article class="card glass"><h3>Routines</h3><p>Chain several actions into one spoken command.</p></article>
@@ -46,7 +49,26 @@
   </div>
 </section>
 
-<section class="glass" id="install">
+<section class="glass reveal">
+  <h2>Screenshots</h2>
+  <p class="fine hint">Tap a screenshot to enlarge it.</p>
+  <div class="shots">
+    <figure class="shot glass">
+      <img src="asset/home.png" alt="MercuReal Voice Home screen with quick action buttons" width="1612" height="720" loading="lazy">
+      <figcaption>Home</figcaption>
+    </figure>
+    <figure class="shot glass">
+      <img src="asset/assistant.png" alt="MercuReal Voice on-device Assistant with Rules and Smart modes" width="1612" height="720" loading="lazy">
+      <figcaption>Assistant</figcaption>
+    </figure>
+    <figure class="shot glass">
+      <img src="asset/car-mode.png" alt="MercuReal Voice Car mode with large buttons" width="1612" height="720" loading="lazy">
+      <figcaption>Car mode</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="glass reveal" id="install">
   <h2>Install</h2>
   <ol class="steps">
     <li><b>Download the APK</b> from the <a href="https://github.com/Ahmadns7/mercureal-voice/releases/latest">latest release</a>.</li>
@@ -57,7 +79,7 @@
   </ol>
 </section>
 
-<section class="glass">
+<section class="glass reveal">
   <h2>Permissions and privacy</h2>
   <p>Everything runs on your phone. Speech recognition, command parsing, the reminders, the notification reader and the on-device assistant all work on the device.</p>
   <ul class="checks">
@@ -67,20 +89,16 @@
     <li>Each sensitive permission is asked for only when a feature needs it: microphone, calls, contacts, SMS, location, camera, usage access, notification access and the accessibility service.</li>
   </ul>
 </section>
-
-<section class="glass">
-  <h2>Screenshots</h2>
-  <div class="shots">
-    <div class="shot glass">Screenshot placeholder: Home</div>
-    <div class="shot glass">Screenshot placeholder: Assistant</div>
-    <div class="shot glass">Screenshot placeholder: Car mode</div>
-  </div>
-</section>
 </main>
 
-<footer class="foot glass">
+<footer class="foot glass reveal">
   <p>MercuReal Tech Solutions</p>
   <p><a href="https://github.com/Ahmadns7/mercureal-voice">Source on GitHub</a> · <a href="https://github.com/Ahmadns7/mercureal-voice/releases">Releases</a></p>
 </footer>
+
+<dialog id="lightbox" aria-label="Screenshot viewer">
+  <img alt="">
+  <p class="fine">Tap anywhere to close</p>
+</dialog>
 </body>
 </html>
