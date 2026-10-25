@@ -2,6 +2,7 @@ package com.mercureal.voice
 
 import android.Manifest
 import android.app.Activity
+import android.app.DownloadManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -52,8 +53,8 @@ class MainActivity : Activity() {
     // live brain-download progress widgets, rebuilt whenever the chat tab renders
     private var brainBar: ProgressBar? = null
     private var brainLabel: TextView? = null
-    private var brainLastUi = 0L
     private var brainActive = false
+    private var brainImporting = false
     private var tourPage = 0
     private var appQuery = ""
     private var pendingBackupJson: String? = null
@@ -573,10 +574,15 @@ class MainActivity : Activity() {
             else -> "Smart mode needs the brain (about 105 MB, one time, download on this phone). Until then it uses rules."
         }
         b.addView(label(brainNote, 11f, muted), lp(2))
-        if (brainActive || Llm.isDownloading()) {
+        // a download started before this screen (or before a restart) keeps reporting progress here
+        if (!brainActive && !Llm.isDownloading()) Llm.pendingDownloadId(this)?.let { trackBrain(it) }
+        if (brainImporting) {
+            b.addView(label("checking and saving the brain file...", 12f, muted), lp(2))
+        } else if (brainActive || Llm.isDownloading()) {
             b.addView(brainProgressRow(), lp(2))
         } else if (!Llm.ready(this) && Llm.ramMb(this) >= Llm.MIN_RAM_MB) {
             b.addView(button("Download brain (105 MB)", primary = false) { confirmBrainDownload() }.apply { layoutParams = lp(2) })
+            b.addView(button("Import brain file", primary = false) { pickBrainFile() }.apply { layoutParams = lp(2) })
         } else if (Llm.ready(this)) {
             b.addView(button("Delete brain", primary = false) { Llm.deleteModel(this); showTab("chat") }.apply { layoutParams = lp(2) })
         }
@@ -608,7 +614,7 @@ class MainActivity : Activity() {
     private fun confirmBrainDownload() {
         android.app.AlertDialog.Builder(this)
             .setTitle("Download the brain?")
-            .setMessage("About 105 MB, one time. It is saved on this phone and used for Smart mode. Chat stays on this phone, the download is the only network use, and you can delete it any time.")
+            .setMessage("About 105 MB, one time. Android's download service fetches it and saves it on this phone for Smart mode. MercuReal itself has no internet permission and makes no network calls. Chat stays on this phone, and you can delete the brain any time.")
             .setPositiveButton("Download") { _, _ -> startBrainDownload() }
             .setNegativeButton("Not now", null)
             .show()
@@ -616,7 +622,6 @@ class MainActivity : Activity() {
 
     private fun brainProgressRow(): LinearLayout {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val total = Llm.MODEL_BYTES
         val status = label("downloading the brain: starting...", 12f, muted)
         val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
@@ -624,26 +629,37 @@ class MainActivity : Activity() {
         }
         box.addView(status, lp(2))
         box.addView(bar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        box.addView(button("Cancel download", primary = false) { Llm.cancelDownload(); status.text = "cancelling..." }.apply { layoutParams = lp(2) })
+        box.addView(button("Cancel download", primary = false) {
+            Llm.cancelDownload(applicationContext)
+            status.text = "cancelling..."
+        }.apply { layoutParams = lp(2) })
         brainLabel = status
         brainBar = bar
         return box
     }
 
     private fun startBrainDownload() {
-        brainLastUi = 0L
-        brainActive = true
+        val id = Llm.enqueueSystemDownload(applicationContext).getOrElse {
+            showBrowserFallback()
+            return
+        }
         Toast.makeText(this, "downloading the brain, progress is on the Assistant tab", Toast.LENGTH_SHORT).show()
+        trackBrain(id)
         showTab("chat")
+    }
+
+    /** Follows a system download on a worker thread and keeps the progress bar in step. */
+    private fun trackBrain(id: Long) {
+        brainActive = true
         Thread({
-            val result = Llm.download(this) { got, total ->
-                // throttle UI updates to every 256 KB (and the final chunk)
-                if (got - brainLastUi >= 256L * 1024 || got >= total) {
-                    brainLastUi = got
-                    runOnUiThread {
-                        val pct = (got * 100 / total.coerceAtLeast(1)).toInt().coerceIn(0, 100)
-                        brainBar?.progress = pct
-                        brainLabel?.text = "downloading the brain: $pct% (${got / 1_048_576} of ${total / 1_048_576} MB)"
+            val result = Llm.awaitDownload(applicationContext, id) { s ->
+                runOnUiThread {
+                    val pct = if (s.total > 0) (s.got * 100 / s.total).toInt().coerceIn(0, 100) else 0
+                    brainBar?.progress = pct
+                    brainLabel?.text = when (s.status) {
+                        DownloadManager.STATUS_PAUSED -> "download paused, waiting for network or storage: $pct%"
+                        DownloadManager.STATUS_PENDING -> "download queued by android..."
+                        else -> "downloading the brain: $pct% (${s.got / 1_048_576} of ${s.total / 1_048_576} MB)"
                     }
                 }
             }
@@ -654,6 +670,44 @@ class MainActivity : Activity() {
                 if (tab == "chat") showTab("chat")
             }
         }, "brain-download").start()
+    }
+
+    /** Shown when Android's download service can't run: the browser downloads the file, then the user imports it. */
+    private fun showBrowserFallback() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Download the brain in your browser")
+            .setMessage("This phone's download service isn't available, so MercuReal can't fetch the model itself. Download this file in your browser, wait for it to finish, then tap Import brain file and pick it from your downloads.\n\n${Llm.MODEL_URL}")
+            .setPositiveButton("Open in browser") { _, _ ->
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Llm.MODEL_URL)))
+                } catch (e: Exception) {
+                    Toast.makeText(this, "no browser found on this phone", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNegativeButton("OK", null)
+            .show()
+    }
+
+    private fun pickBrainFile() {
+        val i = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+        }
+        startActivityForResult(i, REQ_BRAIN_IMPORT)
+    }
+
+    private fun importBrainFile(uri: Uri) {
+        brainImporting = true
+        showTab("chat")
+        Thread({
+            val result = Llm.importBrain(applicationContext, uri)
+            runOnUiThread {
+                brainImporting = false
+                result.onSuccess { Toast.makeText(this, "brain ready", Toast.LENGTH_SHORT).show() }
+                    .onFailure { Toast.makeText(this, it.message ?: "import failed", Toast.LENGTH_LONG).show() }
+                if (tab == "chat") showTab("chat")
+            }
+        }, "brain-import").start()
     }
 
     private fun bubble(role: String, msg: String): LinearLayout {
@@ -952,6 +1006,10 @@ class MainActivity : Activity() {
                 }
                 showTab("chat")
             }
+            REQ_BRAIN_IMPORT -> {
+                val uri = data?.data
+                if (resultCode == RESULT_OK && uri != null) importBrainFile(uri)
+            }
             REQ_SAVE -> {
                 val uri = data?.data
                 val json = pendingBackupJson
@@ -1003,5 +1061,6 @@ class MainActivity : Activity() {
         private const val REQ_SPEECH = 7003
         private const val REQ_SAVE = 7004
         private const val REQ_OPEN = 7005
+        private const val REQ_BRAIN_IMPORT = 7006
     }
 }

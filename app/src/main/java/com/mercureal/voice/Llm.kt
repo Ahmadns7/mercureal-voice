@@ -1,12 +1,16 @@
 package com.mercureal.voice
 
 import android.app.ActivityManager
+import android.app.DownloadManager
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
+import java.io.IOException
+import java.io.InputStream
+import java.security.DigestInputStream
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -65,60 +69,135 @@ object Llm {
     }
 
     private val downloading = AtomicBoolean(false)
-    private val cancelRequested = AtomicBoolean(false)
 
-    /** True while a model download is running (one at a time). */
+    /** Snapshot of the system download job. */
+    data class DlState(val status: Int, val got: Long, val total: Long, val reason: Int)
+
+    private const val PREFS = "brain_download"
+    private const val KEY_ID = "dl_id"
+    private const val STAGING_NAME = "$MODEL_NAME.download"
+
+    private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /** Id of a system download that is still running (or finished but not yet installed), or null. */
+    fun pendingDownloadId(ctx: Context): Long? = prefs(ctx).getLong(KEY_ID, -1L).takeIf { it >= 0 }
+
+    /** Where DownloadManager writes the file. App-specific external storage needs no permission. */
+    private fun stagingFile(ctx: Context): File? = ctx.getExternalFilesDir(null)?.let { File(it, STAGING_NAME) }
+
+    /** True while a download is being tracked or an imported file is being checked and saved. */
     fun isDownloading(): Boolean = downloading.get()
 
-    /** Asks the running download to stop. It deletes the partial file and returns a failure. */
-    fun cancelDownload() { cancelRequested.set(true) }
+    /**
+     * Queues the model with Android's DownloadManager system service. This app holds no INTERNET
+     * permission and makes no network calls: the system downloads the file and we verify it after.
+     * Fails when the download service is missing or disabled, so the caller can fall back to
+     * downloading in the browser and importing the file.
+     */
+    fun enqueueSystemDownload(ctx: Context): Result<Long> = runCatching {
+        val dm = ctx.getSystemService(DownloadManager::class.java) ?: error("this phone's download service is not available")
+        val staging = stagingFile(ctx) ?: error("this phone's storage is not available")
+        staging.delete()
+        val req = DownloadManager.Request(Uri.parse(MODEL_URL))
+            .setTitle("MercuReal brain")
+            .setDescription("On-device model, about 105 MB")
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setDestinationInExternalFilesDir(ctx, null, STAGING_NAME)
+        val id = dm.enqueue(req)
+        prefs(ctx).edit().putLong(KEY_ID, id).apply()
+        id
+    }
+
+    /** Reads the job's state, or null when the job no longer exists (cancelled or removed). */
+    fun readState(ctx: Context, id: Long): DlState? {
+        val dm = ctx.getSystemService(DownloadManager::class.java) ?: return null
+        dm.query(DownloadManager.Query().setFilterById(id))?.use { c ->
+            if (!c.moveToFirst()) return null
+            return DlState(
+                status = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)),
+                got = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)),
+                total = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)).let { if (it > 0) it else MODEL_BYTES },
+                reason = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)),
+            )
+        }
+        return null
+    }
 
     /**
-     * Downloads the model to a .part file, verifies SHA-256, then renames it into place.
-     * [progress] receives (bytesSoFar, totalBytes). Runs on the calling thread.
-     * Only one download runs at a time; a failed or cancelled download leaves no .part file.
+     * Follows the system download until it finishes, reporting [onState] about every half second,
+     * then verifies the SHA-256 and installs the model. Runs on the calling (worker) thread.
+     * Cancelling removes the system job, which makes this return a "cancelled" failure.
      */
-    fun download(ctx: Context, progress: (Long, Long) -> Unit): Result<Unit> {
+    fun awaitDownload(ctx: Context, id: Long, onState: (DlState) -> Unit): Result<Unit> {
         if (!downloading.compareAndSet(false, true)) {
             return Result.failure(IllegalStateException("the brain is already downloading"))
         }
-        cancelRequested.set(false)
-        val out = File(dir(ctx), "$MODEL_NAME.part")
-        return runCatching {
-            val conn = (URL(MODEL_URL).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 15_000; readTimeout = 30_000; instanceFollowRedirects = true
-            }
-            try {
-                conn.inputStream.use { input ->
-                    FileOutputStream(out).use { fos ->
-                        val buf = ByteArray(64 * 1024)
-                        var total = 0L
-                        while (true) {
-                            if (cancelRequested.get()) throw java.io.IOException("download cancelled")
-                            val n = input.read(buf)
-                            if (n < 0) break
-                            fos.write(buf, 0, n)
-                            total += n
-                            progress(total, MODEL_BYTES)
-                        }
-                    }
+        val result = runCatching {
+            while (true) {
+                val s = readState(ctx, id) ?: throw IOException("download cancelled")
+                when (s.status) {
+                    DownloadManager.STATUS_SUCCESSFUL -> break
+                    DownloadManager.STATUS_FAILED -> throw IOException("download failed (android code ${s.reason}), try again")
+                    else -> onState(s)
                 }
-            } finally {
-                conn.disconnect()
+                Thread.sleep(500)
             }
+            val staged = stagingFile(ctx) ?: error("this phone's storage is not available")
+            installFile(ctx, FileInputStream(staged))
+        }
+        finish(ctx, result)
+        return result
+    }
+
+    private fun finish(ctx: Context, result: Result<Unit>) {
+        // the finished or failed system job is no longer needed either way
+        pendingDownloadId(ctx)?.let { id ->
+            ctx.getSystemService(DownloadManager::class.java)?.remove(id)
+        }
+        prefs(ctx).edit().remove(KEY_ID).apply()
+        stagingFile(ctx)?.delete()
+        downloading.set(false)
+    }
+
+    /** Cancels the system download: removes its DownloadManager job, which also deletes the partial file. */
+    fun cancelDownload(ctx: Context) {
+        val id = pendingDownloadId(ctx) ?: return
+        ctx.getSystemService(DownloadManager::class.java)?.remove(id)
+        prefs(ctx).edit().remove(KEY_ID).apply()
+        stagingFile(ctx)?.delete()
+    }
+
+    /**
+     * Fallback when the download service can't run: the user downloads the same file in a browser
+     * and picks it from device storage. The file is checked against the same SHA-256 before use.
+     */
+    fun importBrain(ctx: Context, uri: Uri): Result<Unit> {
+        if (!downloading.compareAndSet(false, true)) {
+            return Result.failure(IllegalStateException("the brain is already downloading"))
+        }
+        return runCatching {
+            val input = ctx.contentResolver.openInputStream(uri) ?: error("could not open that file")
+            installFile(ctx, input)
+        }.also { downloading.set(false) }
+    }
+
+    /** Copies [input] to a .part file while hashing it, accepts it only when the SHA-256 matches, then moves it into place. */
+    private fun installFile(ctx: Context, input: InputStream) {
+        val tmp = File(dir(ctx), "$MODEL_NAME.part")
+        tmp.delete()
+        try {
             val digest = MessageDigest.getInstance("SHA-256")
-            out.inputStream().use { s ->
-                val b = ByteArray(64 * 1024)
-                while (true) { val n = s.read(b); if (n < 0) break; digest.update(b, 0, n) }
+            DigestInputStream(input, digest).use { src ->
+                FileOutputStream(tmp).use { fos -> src.copyTo(fos, 64 * 1024) }
+                val hex = digest.digest().joinToString("") { "%02x".format(it) }
+                check(hex == MODEL_SHA256) { "that file is not the brain (checksum didn't match), nothing was saved" }
             }
-            val hex = digest.digest().joinToString("") { "%02x".format(it) }
-            check(hex == MODEL_SHA256) { "download failed the checksum, try again" }
             val dest = modelFile(ctx)
             dest.delete()
-            check(out.renameTo(dest)) { "could not save the model" }
-        }.also { result ->
-            downloading.set(false)
-            if (result.isFailure) out.delete()
+            check(tmp.renameTo(dest)) { "could not save the model" }
+        } catch (e: Throwable) {
+            tmp.delete()
+            throw e
         }
     }
 
